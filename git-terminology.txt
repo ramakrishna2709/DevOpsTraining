@@ -1,0 +1,62 @@
+>>>>>>>>>>>>>>>Git and GitHub >>>>>>>>>>>>>>>>>>>>>>>>
+	A quick aside: git and GitHub are not the same thing.
+	 Git is an open-source, version control tool created in 2005 by developers working on the Linux operating system; 
+	 GitHub is a company founded in 2008 that makes tools which integrate with git.
+	 You do not need GitHub to use git, but you cannot use GitHub without using git.
+	 There are many other alternatives to GitHub, such as GitLab, BitBucket
+	 
+git: an open source, distributed version-control system
+GitHub: a platform for hosting and collaborating on Git repositories
+commit: a Git object, a snapshot of your entire repository compressed into a SHA
+branch: a lightweight movable pointer to a commit
+clone: a local version of a repository, including all commits and branches
+remote: a common repository on GitHub that all team member use to exchange their changes
+fork: a copy of a repository on GitHub owned by a different user
+pull request: a place to compare and discuss the differences introduced on a branch with reviews, comments, integrated
+tests, and more
+HEAD: representing your current working directory, the HEAD pointer can be moved to different branches, tags, or commits
+when using git checkout
+
+=========================Install git in linux======================
+
+Install Git on Linux
+Debian / Ubuntu (apt-get)
+Git packages are available via apt:
+
+From your shell, install Git using apt-get:
+
+$ sudo apt-get update
+$ sudo apt-get install git
+Verify the installation was successful by typing git --version:
+
+$ git --version
+git version 2.9.2
+Configure your Git username and email using the following commands, replacing Emma's name with your own.
+ These details will be associated with any commits that you create:
+
+$ git config --global user.name "Chandu Prasad"
+$ git config --global user.email "chanduprasad17@gmail.com"
+
+===============================GitHub SSH key setup steps ===================
+To setup GitHub SSH keys and use them on any machine, follow these steps:
+
+Create a GitHub SSH key pair with the ssh-keygen command
+Copy the value of the public SSH key to the clipboard
+Login to GitHub and navigate to your account settings
+Click on the SSH and GPG link
+Click Add Key to register the public SSH key with your account
+Name the key and paste the copied  value into the text field
+Save your changes
+In your Git client, use the SSH based GitHub URL to clone your repo
+
+
+==========================commands==========
+Open the terminal app on your computer.
+Enter the following command, substituting chandu@gmail.com with your email address:
+ >>>>>>> ssh-keygen -t rsa -b 4096 -C "chandu@gmail.com"
+Press Enter to accept the default file location.
+Enter a secure passphrase.
+Press Enter.
+Enter this command to display the contents of your public key:
+>>>>>> cat .ssh/id_rsa.pub
+Copy the contents of your key to your clipboard (we will need it later).
