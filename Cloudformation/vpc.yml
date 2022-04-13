@@ -1,0 +1,690 @@
+# The latest template format version is 2010-09-09 and is currently the only valid value
+# as per https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/format-version-structure.html
+AWSTemplateFormatVersion: 2010-09-09
+
+# The value for the description declaration must be a literal string that is between 0 and 1024 bytes in length. 
+# You cannot use a parameter or function to specify the description.
+Description: > 
+    A template in order to build a complete infrastucture that 
+    we will use to deploy a high-available simple website.
+    
+# Docs: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/parameters-section-structure.html
+Parameters:
+  # SSH access IP address range
+  SSHLocation: 
+    Description: The IP address range that can be used to SSH to the Bastion hosts
+    Type: String
+    MinLength: 9
+    MaxLength: 18
+    Default: 0.0.0.0/0
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: must be a valid IP CIDR range of the for x.x.x.x/x.
+
+  # EC2 key pair to be used
+  KeyName: 
+    Description: Name of an existing EC2 key pair to enable SSH access to the instances
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair
+  
+  # CIDR block
+  VpcCidrBlock:
+    Description: The CIDR block to be used by the VPC
+    Type: String
+    MinLength: 9
+    MaxLength: 18
+    Default: 10.10.0.0/20
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: must be a valid IP CIDR range of the for x.x.x.x/x.
+
+  # Mask size for IPv4 subnet addresses
+  IPv4MaskSize:
+    Description: Mask size for IPv4 subnet addresses
+    Type: Number
+    Default: 8
+    MinValue: 4
+    MaxValue: 8
+    ConstraintDescription: must be a number between 4 and 8
+
+  # Whether creation of private subnets is also required
+  PrivateResourcesCreation:
+    Description: Do you want to create private resources as well?
+    Type: String
+    Default: true
+    AllowedValues: [true, false]
+
+  # EC2 allowed instance types
+  InstanceType:
+    Description: EC2 allowed instance types to be used 
+    Type: String
+    Default: t2.micro
+    AllowedValues: 
+      - t2.micro
+      - t2.small
+      - t2.medium
+
+# Docs: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/conditions-section-structure.html
+Conditions:
+  # Creation of private resources
+  CreatePrivateResources:
+    !Equals [true, !Ref PrivateResourcesCreation]
+
+# Docs: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/mappings-section-structure.html
+Mappings:
+  # Map Linux2 AMI id to region
+  AWSRegionLinux2AMI:
+    us-east-1:      # N. Virginia
+      HVM64: ami-0fc61db8544a617ed
+    us-east-2:      # Ohio
+      HVM64: ami-0e01ce4ee18447327
+    us-west-1:      # N. Calirfornia
+      HVM64: ami-09a7fe78668f1e2c0
+    us-west-2:      # Oregon
+      HVM64: ami-0ce21b51cb31a48b8
+    ap-south-1:     # Mumbai
+      HVM64: ami-03b5297d565ef30a6
+    ap-northeast-2: # Seoul
+      HVM64: ami-0db78afd3d150fc18
+    ap-southeast-1: # Singapore
+      HVM64: ami-0cbc6aae997c6538a
+    ap-southeast-2: # Sydney
+      HVM64: ami-08fdde86b93accf1c
+    ap-northeast-1: # Tokyo
+      HVM64: ami-052652af12b58691f
+    ca-central-1:   # Canada
+      HVM64: ami-0bf54ac1b628cf143
+    eu-central-1:   # Frankfurt
+      HVM64: ami-0ec1ba09723e5bfac
+    eu-west-1:      # Ireland
+      HVM64: ami-04d5cc9b88f9d1d39
+    eu-west-2:      # London
+      HVM64: ami-0cb790308f7591fa6
+    eu-west-3:      # Paris
+      HVM64: ami-07eda9385feb1e969
+    eu-north-1:     # Stockholm
+      HVM64: ami-0f630db6194a81ad0
+    sa-east-1:      # Sao Paolo
+      HVM64: ami-0b032e878a66c3b68
+
+# Docs: 
+#   https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/resources-section-structure.html
+#   https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-template-resource-type-ref.html
+Resources:
+  # VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+        CidrBlock: !Ref VpcCidrBlock
+        EnableDnsHostnames: true
+        EnableDnsSupport: true
+        InstanceTenancy: default
+        Tags:
+            - Key: Name
+              Value: !Join ['', [!Ref 'AWS::StackName', '-vpc' ]]
+  
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-igw 
+
+  # (attach Internet Gateway to VPC)
+  AttachGatewayToVPC:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+  
+  # Subnets
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs ]
+      CidrBlock: !Select 
+        - 0
+        - Fn::Cidr: 
+          - !Ref VpcCidrBlock 
+          - !If [CreatePrivateResources, 4, 2]
+          - !Ref IPv4MaskSize
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public-subnet-a
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs ]
+      CidrBlock: !Select 
+        - 1
+        - Fn::Cidr: 
+          - !Ref VpcCidrBlock 
+          - !If [CreatePrivateResources, 4, 2]
+          - !Ref IPv4MaskSize
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public-subnet-b
+  
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Condition: CreatePrivateResources
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs ]
+      CidrBlock: !Select 
+        - 2
+        - Fn::Cidr: 
+          - !Ref VpcCidrBlock 
+          - !If [CreatePrivateResources, 4, 2]
+          - !Ref IPv4MaskSize
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-private-subnet-a
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Condition: CreatePrivateResources
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs ]
+      CidrBlock: !Select 
+        - 3
+        - Fn::Cidr: 
+          - !Ref VpcCidrBlock 
+          - !If [CreatePrivateResources, 4, 2]
+          - !Ref IPv4MaskSize
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-private-subnet-b
+
+  # ElasticIP
+  NatEipPublicSubnetA:
+    Type: AWS::EC2::EIP
+    Condition: CreatePrivateResources
+    Properties:
+        Domain: !Ref VPC
+
+  NatEipPublicSubnetB:
+    Type: AWS::EC2::EIP
+    Condition: CreatePrivateResources
+    Properties:
+        Domain: !Ref VPC
+
+  # NAT Gateway
+  NatGatewayA:
+    Type: AWS::EC2::NatGateway
+    Condition: CreatePrivateResources
+    Properties: 
+      AllocationId: !GetAtt [NatEipPublicSubnetA, AllocationId]
+      SubnetId: !Ref PublicSubnetA
+      Tags: 
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-nat-gw-a
+
+  NatGatewayB:
+    Type: AWS::EC2::NatGateway
+    Condition: CreatePrivateResources
+    Properties: 
+      AllocationId: !GetAtt [NatEipPublicSubnetB, AllocationId]
+      SubnetId: !Ref PublicSubnetB
+      Tags: 
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-nat-gw-b
+      
+  # Route Tables
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public-route-table
+
+  # (attach IGW to public route table)
+  PublicRouteTableIgwRoute:   
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway  
+      
+  PrivateRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Condition: CreatePrivateResources
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-private-route-table-a
+
+  PrivateRouteTableB: 
+    Type: AWS::EC2::RouteTable
+    Condition: CreatePrivateResources
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-private-route-table-b
+
+  # (attach NAT GWs to private route table)
+  PrivateRouteTableNatARoute:   
+    Type: AWS::EC2::Route
+    Condition: CreatePrivateResources
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableA
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayA
+
+  PrivateRouteTableNatBRoute:   
+    Type: AWS::EC2::Route
+    Condition: CreatePrivateResources
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableB
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayB 
+
+  # (associate public subnets to public route table)
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+  
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  # (associate private subnets to public route table)
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreatePrivateResources
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTableA
+  
+  PrivateSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreatePrivateResources
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTableB
+
+  ### NACLs
+  PublicNacl:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public-nacl
+
+  PublicNaclEntryInbound:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+        NetworkAclId: !Ref PublicNacl
+        CidrBlock: 0.0.0.0/0
+        RuleNumber: 100
+        Protocol: -1
+        RuleAction: allow
+        Egress: false
+
+  PublicNaclEntryOutbound:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+        NetworkAclId: !Ref PublicNacl
+        CidrBlock: 0.0.0.0/0
+        RuleNumber: 100
+        Protocol: -1
+        RuleAction: allow
+        Egress: true
+
+  PrivateNacl:
+    Type: AWS::EC2::NetworkAcl
+    Condition: CreatePrivateResources
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-private-nacl
+
+  PrivateNaclEntryInbound:
+    Type: AWS::EC2::NetworkAclEntry
+    Condition: CreatePrivateResources
+    Properties:
+        NetworkAclId: !Ref PrivateNacl
+        CidrBlock: 0.0.0.0/0
+        RuleNumber: 100
+        Protocol: -1
+        RuleAction: allow
+        Egress: false
+
+  PrivateNaclEntryOutbound:
+    Type: AWS::EC2::NetworkAclEntry
+    Condition: CreatePrivateResources
+    Properties:
+        NetworkAclId: !Ref PrivateNacl
+        CidrBlock: 0.0.0.0/0
+        RuleNumber: 100
+        Protocol: -1
+        RuleAction: allow
+        Egress: true
+
+  # Explicitly associate public subnets to public NACL
+  NaclAssociationPublicSubnetA:
+     Type: AWS::EC2::SubnetNetworkAclAssociation
+     Properties:
+       SubnetId: !Ref PublicSubnetA
+       NetworkAclId: !Ref PublicNacl
+
+  NaclAssociationPublicSubnetB:
+     Type: AWS::EC2::SubnetNetworkAclAssociation
+     Properties:
+       SubnetId: !Ref PublicSubnetB
+       NetworkAclId: !Ref PublicNacl
+  
+  NaclAssociationPrivateSubnetA:
+     Type: AWS::EC2::SubnetNetworkAclAssociation
+     Condition: CreatePrivateResources
+     Properties:
+       SubnetId: !Ref PrivateSubnetA
+       NetworkAclId: !Ref PrivateNacl
+
+  NaclAssociationPrivateSubnetB:
+     Type: AWS::EC2::SubnetNetworkAclAssociation
+     Condition: CreatePrivateResources
+     Properties:
+       SubnetId: !Ref PrivateSubnetB
+       NetworkAclId: !Ref PrivateNacl
+
+  # Security Groups
+  PublicSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SSH & Access from My IP for public subnets
+      GroupName: public-ssh-and-ping-sg
+      VpcId:
+        Ref: VPC
+      SecurityGroupIngress:
+        - CidrIp: !Ref SSHLocation 
+          Description: SSH Access
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+        - CidrIp: !Ref SSHLocation 
+          Description: Ping Access
+          IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+        - CidrIp: !Ref SSHLocation 
+          Description: HTTP Access
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all
+          FromPort: -1
+          IpProtocol: "-1"
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-ssh-ping-public-sg
+        - Key: GroupName
+          Value: public-ssh-and-ping-sg
+
+  PrivateSg:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreatePrivateResources
+    Properties:
+      GroupDescription: SSH and Ping access for private subnets
+      GroupName: private-ssh-and-ping-sg
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - CidrIp: !Ref VpcCidrBlock
+          Description: SSH Access
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+        - CidrIp: !Ref VpcCidrBlock
+          Description: Ping Access
+          IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+        - CidrIp: !Ref VpcCidrBlock
+          Description: HTTP Access
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all
+          FromPort: -1
+          IpProtocol: "-1"
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-ssh-ping-private-sg
+        - Key: GroupName
+          Value: private-ssh-and-ping-sg
+
+  # EC2 
+  BastionHostA:
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: !FindInMap [AWSRegionLinux2AMI, !Ref 'AWS::Region', HVM64]
+      KeyName: !Ref KeyName
+      InstanceType: !Ref InstanceType
+      AvailabilityZone: !Select [ 0, !GetAZs ]
+      SecurityGroupIds: [!Ref PublicSg]
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-bastion-host-a
+
+  BastionHostB:
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: !FindInMap [AWSRegionLinux2AMI, !Ref 'AWS::Region', HVM64]
+      KeyName: !Ref KeyName
+      InstanceType: !Ref InstanceType
+      AvailabilityZone: !Select [ 1, !GetAZs ]
+      SecurityGroupIds: [!Ref PublicSg]
+      SubnetId: !Ref PublicSubnetB
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-bastion-host-b
+
+  WebsiteA:
+    Type: AWS::EC2::Instance
+    Condition: CreatePrivateResources
+    Properties: 
+      ImageId: !FindInMap [AWSRegionLinux2AMI, !Ref 'AWS::Region', HVM64]
+      KeyName: !Ref KeyName
+      InstanceType: !Ref InstanceType
+      AvailabilityZone: !Select [ 0, !GetAZs ]
+      SecurityGroupIds: [!Ref PrivateSg]
+      SubnetId: !Ref PrivateSubnetA
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-website-a
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            yum update -y
+            yum install -y httpd
+            systemctl start httpd.service
+            systemctl enable httpd.service
+            EC2_AVAIL_ZONE=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
+            echo "<h1>Hello from $(hostname -f) in AZ $EC2_AVAIL_ZONE </h1>" > /var/www/html/index.html
+  
+  WebsiteB:
+    Type: AWS::EC2::Instance
+    Condition: CreatePrivateResources
+    Properties: 
+      ImageId: !FindInMap [AWSRegionLinux2AMI, !Ref 'AWS::Region', HVM64]
+      KeyName: !Ref KeyName
+      InstanceType: !Ref InstanceType
+      AvailabilityZone: !Select [ 1, !GetAZs ]
+      SecurityGroupIds: [!Ref PrivateSg]
+      SubnetId: !Ref PrivateSubnetB
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-website-b
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            yum update -y
+            yum install -y httpd
+            systemctl start httpd.service
+            systemctl enable httpd.service
+            EC2_AVAIL_ZONE=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
+            echo "<h1>Hello from $(hostname -f) in AZ $EC2_AVAIL_ZONE </h1>" > /var/www/html/index.html
+
+  # Application Load Balancer
+  WebsiteALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Condition: CreatePrivateResources
+    Properties: 
+      Name: website-alb
+      Type: application
+      Scheme: internet-facing
+      IpAddressType: ipv4
+      SecurityGroups: 
+        - !Ref PublicSg
+      Subnets: 
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+  
+  # Application Load Balancer's Target Group
+  WebsiteALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Condition: CreatePrivateResources
+    Properties: 
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /
+      HealthCheckPort: 80
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      Name: website-tg
+      Port: 80
+      Protocol: HTTP
+      Targets: 
+        - Id: !Ref WebsiteA
+        - Id: !Ref WebsiteB
+      TargetType: instance
+      UnhealthyThresholdCount: 2
+      VpcId: !Ref VPC
+
+  # Application Load Balancer's Listeners
+  WebsiteALBListeners:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: CreatePrivateResources
+    Properties: 
+      DefaultActions: 
+        - TargetGroupArn: !Ref WebsiteALBTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref WebsiteALB
+      Port: 80
+      Protocol: HTTP
+
+  # ASG: Launch Configuration
+  LaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Condition: CreatePrivateResources
+    Properties: 
+      AssociatePublicIpAddress: false
+      ImageId: !FindInMap [AWSRegionLinux2AMI, !Ref 'AWS::Region', HVM64]
+      InstanceType: !Ref InstanceType
+      InstanceMonitoring: false
+      KeyName: !Ref KeyName
+      LaunchConfigurationName: website-lc
+      SecurityGroups: 
+        - !Ref PrivateSg
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            yum update -y
+            yum install -y httpd
+            systemctl start httpd.service
+            systemctl enable httpd.service
+            EC2_AVAIL_ZONE=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
+            echo "<h1>Hello from $(hostname -f) in AZ $EC2_AVAIL_ZONE </h1>" > /var/www/html/index.html
+
+  # Auto Scaling Group
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Condition: CreatePrivateResources
+    Properties: 
+      AutoScalingGroupName: website-asg
+      AvailabilityZones: 
+        - !Select [ 0, !GetAZs ]
+        - !Select [ 1, !GetAZs ]
+      Cooldown: 120
+      DesiredCapacity: 2
+      HealthCheckGracePeriod: 60
+      HealthCheckType: EC2
+      LaunchConfigurationName: !Ref LaunchConfiguration
+      MaxSize: 4
+      MinSize: 2
+      TargetGroupARNs: 
+        - !Ref WebsiteALBTargetGroup
+      VPCZoneIdentifier: 
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+      Tags:
+        - Key: Name
+          Value: website-asg
+          PropagateAtLaunch: true
+
+  # ASG Scaling Policy
+  ScalingPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Condition: CreatePrivateResources
+    Properties: 
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      Cooldown: 60
+      EstimatedInstanceWarmup: 30
+      PolicyType: TargetTrackingScaling 
+      TargetTrackingConfiguration: 
+        DisableScaleIn: false
+        PredefinedMetricSpecification: 
+          PredefinedMetricType: ALBRequestCountPerTarget
+          ResourceLabel: !Join 
+            - '/' 
+            - - !GetAtt WebsiteALB.LoadBalancerFullName 
+              - !GetAtt WebsiteALBTargetGroup.TargetGroupFullName
+        TargetValue: 5
+
+# Docs: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/metadata-section-structure.html
+Metadata:
+ # Control the UI display when running this template from the AWS Management Console
+ AWS::CloudFormation::Interface:
+  ParameterGroups:
+    - Label:
+        default: "SSH Access"
+      Parameters: 
+        - KeyName
+        - SSHLocation
+    - Label:
+        default: "Network Configuration"
+      Parameters:
+        - VpcCidrBlock
+        - IPv4MaskSize
+    - Label:
+        default: "Resources Configuration"
+      Parameters:
+        - InstanceType
+        - PrivateResourcesCreation

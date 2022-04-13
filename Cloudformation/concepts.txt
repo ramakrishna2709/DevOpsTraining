@@ -1,0 +1,75 @@
+###############################Parameters###########################
+Next, we are going to define a few Parameters, in order to make our script more generic. 
+The AWS users that will run the template, will have to provide values to those parameters, after they upload the .template file.
+We start, by giving the user the option to define a range of IP addresses from which they can access the bastion hosts we will later create.
+ For example, when I run the template, I’m passing my own IP address (172.58.43.122/32).
+
+ Parameters:
+  # SSH access IP address range
+  SSHLocation: 
+    Description: The IP address range that can be used to SSH to the Bastion hosts
+    Type: String
+    MinLength: 9
+    MaxLength: 18
+    Default: 0.0.0.0/0
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: must be a valid IP CIDR range of the for x.x.x.x/x.
+We also define a parameter for the name of the key-pair file that the user will use to connect to all EC2 instances.
+
+# EC2 key pair to be used
+KeyName: 
+  Description: Name of an existing EC2 key pair to enable SSH access to the instances
+  Type: AWS::EC2::KeyPair::KeyName
+  ConstraintDescription: must be the name of an existing EC2 KeyPair
+  
+We then try to make the creation of the VPC and Subnets a bit more dynamic, by allowing the user to define the VCP CIDR block they want, as well as the number of subnet bits for every created subnet’s CIDR. We will see how these are going to be used when we’ll later create the corresponding components, making use of the Fn::Cidr function.
+
+You can use a more restrictive regex expression at the AllowedPattern key
+At the end of the Parameters section, we’ll give the option to the user to decide whether they want to create the private resources (EC2 instances, NAT Gateways, Elastic IPs, etc), in case someone wants to remain on the free-tier.
+Please note here that enabling the creation of private resources, will incur a very small cost, as AWS charges $0.045/hour as the Price per NAT gateway.
+At the end of the section, we define a list of EC2 instance types that can be used when creating both the bastion hosts as well as the website instances. We have chosen t2.micro as the default value, as we don’t want to get charged for EC2 resource usage.
+
+In our example we are going to create the private resources
+######################Conditions#########################
+Conditions provides us with the flexibility to control the creation of certain resources in our stack.
+ In our example, we’ll just define a condition, that will take into consideration the value that the user will pass to the PrivateResourcesCreation parameter declared above.
+The condition will be used as a check when deciding on whether certain parts of our infrastructure should be built or not.
+
+######################Conditions:
+  # Creation of private resources
+  CreatePrivateResources:
+    !Equals [true, !Ref PrivateResourcesCreation]
+	
+##########################Mappings###########################
+What follows is the Mappings section, at which we have all AMI ids for the Amazon Linux 2 image, and based on the region that the stack will be created at, the script will choose the appropriate AMI for the EC2 instances creation.
+Mappings:
+  # Map Linux2 AMI id to region
+  AWSRegionLinux2AMI:
+    us-east-1:      # N. Virginia
+      HVM64: ami-0fc61db8544a617ed
+    us-east-2:      # Ohio
+      HVM64: ami-0e01ce4ee18447327
+    us-west-1:      # N. Calirfornia
+      HVM64: ami-09a7fe78668f1e2c0
+    us-west-2:      # Oregon
+      HVM64: ami-0ce21b51cb31a48b8
+
+AMI ids might be changed from time to time, so please crosscheck the correctness of the data
+#########################Resources###################3
+This will be the biggest section of our template file (at least in the specific example), as we are going to define each resource needed for our infrastructure, as well as the associations between some of those.
+We’ll try to write the code based on the order that we want our resources to be created, but that doesn’t play any role in the actual event execution sequence. As a helper tool, we can use the DependsOn attribute, in order to ensure that the creation of a specific resource follows another.
+
+VPC
+We start by the VPC, referencing the VpcCidrBlock defined in the Parameters section. We also prefix the Name tag with the stack name given by the user.
+Resources:
+  # VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+        CidrBlock: !Ref VpcCidrBlock
+        EnableDnsHostnames: true
+        EnableDnsSupport: true
+        InstanceTenancy: default
+        Tags:
+            - Key: Name
+              Value: !Join ['', [!Ref 'AWS::StackName', '-vpc' ]]
