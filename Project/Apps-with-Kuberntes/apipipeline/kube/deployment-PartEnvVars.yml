@@ -1,0 +1,13 @@
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: ENVIRONMENTNAMEUPPER
+        - name: eureka_instance_hostname
+          value: APPLICATIONNAME
+        - name: API_USER_TIMEZONE
+          value: COUNTRY/STATE
+        - name: LOGGING_LEVEL_ROOT
+          value: LOGROOTLEVEL
+        - name: LOGGING_LEVEL_COM_ACADEMY
+          value: LOGAPPLICATIONLEVEL       
+        - name: JAVA_OPTS
+          value: JAVAOPTS -Duser.timezone=America/Chicago

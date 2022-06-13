@@ -1,0 +1,37 @@
+>>>>>>>>>>>>Start by updating your system packages and install the required dependencies:>>>>
+
+sudo yum update
+sudo yum install yum-utils device-mapper-persistent-data lvm2
+
+>>>>>>>>>>>>>>>>>>>>>Next, run the following command which will add the Docker stable repository to your system:
+
+sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+>>>>>>>>>>>>>.Now that the Docker repository is enabled, install the latest version of Docker CE (Community Edition) using yum by typing:
+
+sudo yum install docker-ce
+
+>>>>>>>>>>>>>>>>>>>>Once the Docker package is installed, start the Docker daemon and enable it to automatically start at boot time:
+
+sudo systemctl start docker
+sudo systemctl enable docker
+
+>>>>>>>>>>>>To verify that the Docker service is running type:
+
+sudo systemctl status docker
+docker -v
+
+>>>>>>>>>>>>>>>>>>>>Executing the Docker Command Without Sudo >>>>>>>>>>>>>>>>>>>>>>>
+>>>>By default managing, Docker requires administrator privileges.
+ If you want to run Docker commands as a non-root user without prepending sudo you need to add your user to the docker group which is created during the installation of the Docker CE package. You can do that by typing
+ 
+ sudo usermod -aG docker $USER
+ sudo usermod -aG docker $(whoami)
+ 
+ >>>>>>>>>>>>>>>>>>.To view all available subcommands, type:
+
+ddocker
+
+>>>>>>>>>>>>>To view system-wide information, use:
+
+docker info

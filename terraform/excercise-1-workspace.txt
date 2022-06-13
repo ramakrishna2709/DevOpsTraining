@@ -1,0 +1,37 @@
+workspace:
+
+=========
+1. Create 2 worksapces
+      development
+	  production
+	  
+2. Resources deployment in development workspace
+
+    development===>(us-east-1)
+	   1. vpc creation ---- us-east-1
+	   2. Security group
+	   3. ec2 Instance creation
+	   4. s3 bucket
+	  
+	  
+3. Resources deployment in production workspace
+
+    development===>(us-west-1)
+	   1. vpc creation ---- us-west-1
+	   2. Security group
+	   3. ec2 Instance creation
+	   4. s3 bucket
+	   
+	  
+	  
+4. delete resources/workspaces
+
+
+Folder struture:
+
+    main.tf
+	dev.tfvars
+	prod.tfvars
+	variables.tf
+	output.tf
+	

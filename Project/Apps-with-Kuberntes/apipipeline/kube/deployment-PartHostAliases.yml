@@ -1,0 +1,68 @@
+      restartPolicy: Always
+      hostAliases:
+      - ip: 10.8.31.205
+        hostnames:
+        - uat5int.academy.com
+      - ip: 10.8.24.204
+        hostnames:
+        - uat4int.academy.com
+      - ip: 10.8.31.206
+        hostnames:
+        - uat6int.academy.com
+      - ip: 10.8.31.207
+        hostnames:
+        - uat7int.academy.com  
+      - ip: 10.8.31.19
+        hostnames:
+        - perfint.academy.com
+      - ip: 10.8.21.203
+        hostnames:
+        - www500.academy.com
+      - ip: 10.8.22.206
+        hostnames:
+        - wcs500.academy.com
+      - ip: 10.8.24.93
+        hostnames:
+        - ulapwcs400e.academy.com
+      - ip: 10.8.24.153
+        hostnames:
+        - ulapwcs500e.academy.com
+      - ip: 10.8.24.25
+        hostnames:
+        - ulapwcs600e.academy.com
+      - ip: 10.8.24.55
+        hostnames:
+        - ulapwcs700e.academy.com
+      - ip: 10.8.24.201
+        hostnames:
+        - ulapwcs800e.academy.com
+      - ip: 10.8.22.159
+        hostnames:
+        - plapwcs500e.academy.com
+      - ip: 10.8.12.56
+        hostnames:
+        - sterlingoms.academy.com
+      - ip: 10.8.11.104
+        hostnames:
+        - usterlingoms.academy.com
+      - ip: 10.8.24.224
+        hostnames:
+        - usterlingoms400.academy.com
+      - ip: 10.8.24.225
+        hostnames:
+        - usterlingoms500.academy.com
+      - ip: 10.8.24.226
+        hostnames:
+        - usterlingoms600.academy.com
+      - ip: 10.8.24.227
+        hostnames:
+        - usterlingoms700.academy.com
+      - ip: 10.8.24.238
+        hostnames:
+        - usterlingoms800.academy.com
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      securityContext: {}
+      imagePullSecrets:
+      - name: aso-gcr-secret
+      schedulerName: default-scheduler

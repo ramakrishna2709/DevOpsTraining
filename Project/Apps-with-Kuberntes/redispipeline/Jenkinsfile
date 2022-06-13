@@ -1,0 +1,56 @@
+node(env.JenkinsSlaveNode) {
+	def gimageName = env.JOB_NAME.tokenize( '_' )[1]
+	def envName = env.JOB_NAME.tokenize( '_' )[0]
+	String namespace = envName
+	def pipelineBranch = env.pipelinebname
+	env.gimageName = "$gimageName"
+	env.envName = "$envName"
+	currentBuild.result = "SUCCESS"
+
+	//Setting up namespace variable
+    if (env.envName.equals("uat") || env.envName.equals("prod")){
+        namespace = "default"
+    }
+	
+    env.namespace = "$namespace"
+    println namespace
+
+	try {
+	   stage('Checkout'){
+			sh "env"
+			checkout([$class: 'GitSCM', branches: [[name: "$pipelineBranch"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: 'https://bitbucket.org/academysports/devops-cd-pipeline.git']]])
+	   }
+	   if(currentBuild.result=='SUCCESS')
+		{
+			stage('Deploying to Kubernetes'){
+				sh '''
+				    cd ${WORKSPACE}/redispipeline/kube
+					sleep 20s
+					serviceName='redis-master'
+					serviceType='deployment'
+					export PATH=$HOME/google-cloud-sdk/bin:$PATH					
+					if [ ! -z ${serviceName} ] && [ ! -z ${serviceType} ]
+					then
+						if [ $( echo -e ${serviceType} | grep -c deployment ) -eq 1 ] && [ $( kubectl get service -n $namespace | grep -c ${serviceName} ) -eq 0 ]
+						then
+							for yaml in $( echo -e $( ls *.yaml ) )
+							do
+								sed -i "s/NAMESPACE/$namespace/g" ${yaml}
+								sed -i "s/NAMESPACE/$namespace/g" ${yaml}
+							done
+							kubectl create --save-config -f redis-master-service.yaml
+							kubectl create --save-config -f redis-slave-service.yaml
+							kubectl create --save-config -f redis-master-deployment.yaml
+							kubectl create --save-config -f redis-slave-deployment.yaml
+						fi
+					fi
+				'''
+			}
+		}
+	}
+	catch (err) {
+        currentBuild.result = "FAILURE"
+            step([$class: 'Mailer', notifyEveryUnstableBuild: true, recipients: 'hkhan2@sapient.com mramanathan@sapient.com', sendToIndividuals: false])
+        throw err
+    }
+}

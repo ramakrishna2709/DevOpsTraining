@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: influxdb-pv-NAMESPACE
+  namespace: NAMESPACE
+  labels:
+    failure-domain.beta.kubernetes.io/region: "K8SREGION" 
+    failure-domain.beta.kubernetes.io/zone: "K8SZONE" 
+spec:
+  storageClassName: ssd
+  capacity:
+    storage: STORAGESIZE
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  gcePersistentDisk:
+    pdName: influxdb-disk-NAMESPACE
+    fsType: ext4

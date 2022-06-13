@@ -1,0 +1,94 @@
+docker image pull centos
+docker image ls
+docker image rm centos
+sudo docker rmi 7a86f8ffcb25 
+
+sudo docker images -q 
+sudo docker inspect jenkins 
+
+sudo docker history centos
+  (show all the commands that were run against the centos image.)
+  
+>>>>> docker top >>>>>>With this command, you can see the top processes within a container.
+
+Syntax
+docker top ContainerID 
+
+>>>>>>>>>>>>>docker stats
+This command is used to provide the statistics of a running container.
+
+Syntax
+>>>>>>>>>>>>>docker stats ContainerID 
+Options
+ContainerID - This is the Container ID for which the stats need to be provided.
+
+Return Value
+The output will show the CPU and Memory utilization of the Container.
+
+>>>>>docker kill
+This command is used to kill the processes in a running container.
+
+Syntax
+docker kill ContainerID
+
+>>>>>>>>sudo docker pause 07b0b6f434fe 
+>>>>>>>>>>>>>sudo docker unpause 07b0b6f434fe 
+
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+Docker – Container Lifecycle
+The following illustration explains the entire lifecycle of a Docker container.
+
+Container Lifecycle
+Initially, the Docker container will be in the created state.
+
+Then the Docker container goes into the running state when the Docker run command is used.
+
+The Docker kill command is used to kill an existing Docker container.
+
+The Docker pause command is used to pause an existing Docker container.
+
+The Docker stop command is used to pause an existing Docker container.
+
+The Docker run command is used to put a container back from a stopped state to a running state.
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+ Docker File.
+
+Step 1 - Create a file called Docker File and edit it using vim. Please note that the name of the file has to be "Dockerfile" with "D" as capital.
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#vi Dockerfile
+FROM centos:latest
+MAINTAINER NewstarCorporation
+RUN yum -y install httpd
+COPY index.html /var/www/html/
+CMD [“/usr/sbin/httpd”, “-D”, “FOREGROUND”]
+EXPOSE 80
+
+#docker build  -t webserver:v1
+
+---------------------------------------
+
+Dockerfile---------------------------------
+
+FROM This must be the first instruction in the Dockerfileand identifies the image to inherit from
+MAINTAINER Provides visibility and credit to the author of the image
+RUN Executes a Linux command for configuring and installing
+ENTRYPOINT The final script or application used to bootstrap the container, making it an executable application
+CMD Provide default arguments to the ENTRYPOINT using a JSON array format 
+LABEL Name/value metadata about the image
+ENV Sets environment variables
+COPY Copies files into the container
+ADD Alternative to copy
+WORKDIR Sets working directory for RUN, CMD,
+ENTRYPOINT, COPY, and/or ADD instructions
+EXPOSE Ports the container will listen on
+VOLUME Creates a mount point
+USER User to run RUN, CMD, and/or ENTRYPOINT

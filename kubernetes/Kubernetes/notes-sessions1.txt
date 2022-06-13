@@ -1,0 +1,103 @@
+eksctl   =>
+kops ==> 
+eksctl create 
+kops create cluster clustename="" --numnodes=2
+
+standalone ==> CF templates
+
+=================>
+==> odd based ==1 Master 3 nodes  => 2 mster 5 nodes
+Master
+node1
+node2
+
+
+ Nodes
+ 
+  ==> Job ( group of pods)
+       Pods( group of containers)
+	    container --> docker
+		
+Terms:
+
+1. Control plane( Master)
+2. Data plane ( Nodes)
+
+ Deployments   => kind: Deployment   => deployment.yml
+ services  => kind: Service
+ Replications controllers  
+ Pods  => kind: pod
+ Jobs kind: job
+ Scheduler kind:scheduler
+ configmap
+ secrtes
+ perrsistant volumnes
+ pV claims
+ namespaces
+ CRD(custom resource definiftion)
+ RBAC
+ Ingress
+ Networking
+ HPA
+ 
+ 
+Kubectl  ===> command line tool to interact with master===>
+
+kubeconfig ==> it will have cluster information==> 
+
+kubectl delete service -f service.yml ===>
+
+namespace:
+
+  ==> default ==>
+  
+  cluster ==>nodes==> application1 ==> deploy application1 related ones==>
+  cluster ==> application2 ==> deploy application1 related ones==>
+  
+    kubectl get pods --namespace application1
+	
+	kubectl create namespace devlopment
+	kubectl create service -f service.yml  --namespace development===>
+	
+	
+  
+
+
+=========> deployment
+ ==> type of Api== > Kind: deployment
+  labels
+   metadata 
+  names
+  pod configutation:
+  
+  docker image
+
+   ports
+   volume
+   
+   volumeclaim
+   secrtes
+   configmap
+   
+   liveness
+   readness
+   
+   
+   ====> deployment.yml
+             => secretes.yml
+			  ==> configmap.yml
+			  ==> pv.yml
+			  ==>pvc.yml
+			  ==> rbac,yml
+			  serviceaccount.yml
+    => service.yml  => name: men-service
+	 womenservice.yml  => name: wommen-service
+	==> ingress.yml
+	
+	   /mens  => wommen-service
+	    port:
+		Ip:
+		
+	   /womens  =>
+
+   

@@ -1,0 +1,63 @@
+pipeline {
+    agent any 
+    
+    environment {
+        checkoutBranch = "master"
+        repoName = "https://github.com/chanduprasadk/devops-practice.git"
+        
+        nexusartifactId = "vprofile"
+        version = "2.0" 
+        nexusRepo = "devops-practice-repo/"
+        filename = "target/vprofile-v1.war"
+        registry = "chanduprasad1708/docker-test"
+        registryCredential = 'docker-login'
+    }
+    
+   tools {
+     maven 'MAVEN_HOME'
+    }
+    
+    
+    stages{
+      
+      stage('Checkout'){
+              steps{
+                 println "inside the checkout stage"
+                 checkout([$class: 'GitSCM', branches: [[name: "${checkoutBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'git-server', url: "${repoName}"]]])
+          }
+      }
+
+      stage('Build'){
+              
+           steps{
+              println "inside the build stage"
+              sh "mvn clean package"
+              
+          }
+      } 
+
+      stage('UnitTest'){
+          steps{
+              println "inside the UnitTest"
+              sh "mvn test -B" 
+              
+              step([$class: 'JUnitResultArchiver', testResults: '**/target/surefire-reports/*.xml'])
+      }
+      }
+
+     
+
+       stage('Deploy to Nexus')
+			{
+            steps{
+			    println "[INFO] running deploy to nexus"
+                
+				println "${filename}"
+			
+                step([$class: 'NexusArtifactUploader', artifacts: [[artifactId: "${nexusartifactId}", classifier: '', file: "${filename}", type: 'war']], credentialsId: 'nexus-server', groupId: 'com.visualpathit', nexusUrl: '34.67.224.191:8081', nexusVersion: 'nexus3', protocol: 'http', repository: "${nexusRepo}", version: "${version}"])	
+	            }
+            }
+            
+       
+}
+}

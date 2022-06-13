@@ -1,0 +1,49 @@
+===================
+Data sources allow data to be fetched or computed for use elsewhere in Terraform configuration. 
+Use of data sources allows a Terraform configuration to make use of information defined outside of Terraform, or defined by another separate Terraform configuration.
+=====================================================
+Each provider may offer data sources alongside its set of resource types.
+
+====================Using Data Sources
+A data source is accessed via a special kind of resource known as a data resource, declared using a data block:
+
+data "aws_instances" "example" {
+  most_recent = true
+
+ 
+  tags = {
+    
+    Name = "testing-*"
+  }
+}
+
+
+10 ec2-isntances
+
+tag:===  5
+Name:
+Role:
+Environment: dev
+
+5 instandes:
+
+Enviornment: qa
+Name: testing-1 testing-2 testin-4
+
+
+ex:
+
+# Find the latest available AMI that is tagged with Component = web
+data "aws_ami" "web" {
+  filter {
+    name   = "state"
+    values = ["available"]
+  }
+
+  filter {
+    name   = "tag:Component"
+    values = ["web"]
+  }
+
+  most_recent = true
+}

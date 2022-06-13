@@ -1,0 +1,22 @@
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: APPLICATIONNAME
+  namespace: NAMESPACE
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1beta1
+    kind: Deployment
+    name: APPLICATIONNAME
+  minReplicas: minHPA
+  maxReplicas: maxHPA
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: VCPUPERCENT
+  - type: Resource
+    resource:
+      name: memory
+      targetAverageUtilization: VCPUPERCENT

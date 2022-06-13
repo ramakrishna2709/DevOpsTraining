@@ -1,0 +1,68 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    app: APPLICATIONNAME-NAMESPACE-monitor
+    k8s-app: APPLICATIONNAME-NAMESPACE-monitor
+  name: APPLICATIONNAME-NAMESPACE-monitor
+  namespace: monitoring
+spec:
+  endpoints:
+  - honorLabels: true
+    interval: 30s
+    port: tcp-PORT-APPPNUMBER-APPLICATIONNAME
+    path: "/prometheus"
+  jobLabel: app
+  namespaceSelector:
+    matchNames:
+    - NAMESPACE
+  selector:
+    matchLabels:
+      app: APPLICATIONNAME
+---
+kind: Service
+apiVersion: v1
+metadata:
+  annotations:
+    prometheus.io/path: /prometheus
+    prometheus.io/port: "APPPNUMBER"
+    prometheus.io/scrape: "true"
+  name: APPLICATIONNAME-exporter
+  namespace: NAMESPACE
+  labels:
+    app: APPLICATIONNAME-exporter
+spec:
+  ports:
+  - name: tcp-PORT-APPPNUMBER-APPLICATIONNAME-exporter
+    protocol: TCP
+    port: PORT
+    targetPort: APPPNUMBER
+  selector:
+    app: APPLICATIONNAME
+  type: ClusterIP
+  sessionAffinity: None
+---
+kind: Service
+apiVersion: v1
+metadata:
+  annotations:
+    cloud.google.com/load-balancer-type: "Internal"
+  name: APPLICATIONNAME
+  namespace: NAMESPACE
+  labels:
+    app: APPLICATIONNAME
+spec:
+  ports:
+  - name: tcp-PORT-APPPNUMBER-APPLICATIONNAME
+    protocol: TCP
+    port: PORT
+    targetPort: APPPNUMBER
+  selector:
+    app: APPLICATIONNAME
+  type: LoadBalancer
+  sessionAffinity: None
+  externalTrafficPolicy: Cluster
+  loadBalancerIP: INTERNALLBIP
+  loadBalancerSourceRanges: 
+    - 10.0.0.0/8

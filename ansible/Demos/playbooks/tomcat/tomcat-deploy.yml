@@ -1,0 +1,18 @@
+---
+- hosts: all
+  become: yes
+  become_method: sudo
+  remote_user: devops_practiceworks2019
+
+  tasks:
+    - name: Make sure that we can connect to the machine
+      ping:
+
+    - name: copy war
+      get_url: 
+        url: https://tomcat.apache.org/tomcat-7.0-doc/appdev/sample/sample.war 
+        dest: /opt/tomcat/webapps/sample.war 
+        #dest: /opt/
+        owner: tomcat 
+        group: tomcat 
+        mode: 0755

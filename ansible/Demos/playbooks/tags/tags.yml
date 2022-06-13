@@ -1,0 +1,28 @@
+---
+- hosts: localhost
+  vars:
+    ansible_connection: local
+  tasks:
+    - name: demo an untagged task
+      debug:
+        msg: I am an untagged task
+
+    - name: demo a normal tagged task
+      debug:
+        msg: I am a tagged task
+      tags:
+        - normal
+
+    - name: demo a never-tagged task
+      debug:
+        msg: I am a never-tagged task
+      tags:
+        - never
+        - run-never
+    
+    - name: demo an always-tagged task
+      debug:
+        msg: I am an always-tagged task
+      tags:
+        - always
+        - exclude-always

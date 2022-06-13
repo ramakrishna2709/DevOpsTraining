@@ -1,0 +1,59 @@
+
+---
+- hosts: all
+  become: true
+  vars:
+    package: vim
+  tasks:
+  
+     #############variables
+     
+    - name: Install Package
+       apt: name={{ package }} state=latest
+       
+       
+     ####### loops 
+     
+    - name: Install Packages
+       apt: name={{ item }} state=latest
+       with_items:
+         - vim
+         - git
+         - curl  
+
+     ##########condition
+
+    - name: Shutdown Debian Based Systems
+      command: /sbin/shutdown -t now
+      when: ansible_os_family == "Debian" 
+
+
+    ########ignore erros skip for taks if it s fail
+
+    - name: Check if PHP is installed
+      register: php_installed
+      command: php -v
+      ignore_errors: true
+
+    - name: This task is only executed if PHP is installed
+      debug: var=php_install
+      when: php_installed|success
+
+    - name: This task is only executed if PHP is NOT installed
+      debug: msg='PHP is NOT installed'
+      when: php_installed|failed   
+
+
+    ###############template
+
+    - name: Change default Apache virtual host
+      template: 
+        src: vhost.tpl
+        dest: /etc/apache2/sites-available/000-default.conf
+      notify: restart apache
+        
+     ##########Defining and Triggering Handlers
+
+  handlers:
+    - name: restart apache
+      service: name=apache2 state=restarted     

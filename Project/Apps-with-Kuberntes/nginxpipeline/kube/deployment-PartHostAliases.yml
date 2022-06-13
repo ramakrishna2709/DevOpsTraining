@@ -1,0 +1,11 @@
+      restartPolicy: Always
+      hostAliases:
+      - ip: HOSTALIASIP
+        hostnames:
+        - HOSTALIASNAME
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      securityContext: {}
+      imagePullSecrets:
+      - name: aso-gcr-secret
+      schedulerName: default-scheduler

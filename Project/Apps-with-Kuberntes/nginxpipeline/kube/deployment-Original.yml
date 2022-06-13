@@ -1,0 +1,106 @@
+---
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: APPLICATIONNAME
+  namespace: qa3
+  labels:
+    app: APPLICATIONNAME
+  annotations:
+    deployment.kubernetes.io/revision: '1'
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: APPLICATIONNAME
+  template:
+    metadata:
+      name: APPLICATIONNAME
+      labels:
+        app: APPLICATIONNAME
+    spec:
+      containers:
+      - name: APPLICATIONNAME
+        image: us.gcr.io/just-slate-88918/APPLICATIONNAME:BUILDVERSION
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: ENVIRONMENTNAMEUPPER
+        - name: eureka_instance_hostname
+          value: APPLICATIONNAME
+        resources:
+          limits:
+            cpu: "VCPUMAX"
+            memory: VMEMORYMAX
+          requests:
+            cpu: VCPUMIN
+            memory: VMEMORYMIN
+        readinessProbe:
+          failureThreshold: 5
+          initialDelaySeconds: 60
+          periodSeconds: 5
+          successThreshold: 1
+          tcpSocket:
+            port: 80
+          timeoutSeconds: 1
+        imagePullPolicy: Always
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+              - SYS_ADMIN
+      restartPolicy: Always
+      hostAliases:
+      - ip: 10.8.31.205
+        hostnames:
+        - uat5int.academy.com
+      - ip: 10.8.24.204
+        hostnames:
+        - uat4int.academy.com
+      - ip: 10.8.31.206
+        hostnames:
+        - uat6int.academy.com
+      - ip: 10.8.31.207
+        hostnames:
+        - uat7int.academy.com  
+      - ip: 10.8.31.19
+        hostnames:
+        - perfint.academy.com
+      - ip: 10.105.36.20
+        hostnames:
+        - dispatcher
+      - ip: 10.8.21.203
+        hostnames:
+        - www500.academy.com
+      - ip: 10.8.22.206
+        hostnames:
+        - wcs500.academy.com
+      - ip: 10.8.24.93
+        hostnames:
+        - ulapwcs400e.academy.com
+      - ip: 10.8.24.153
+        hostnames:
+        - ulapwcs500e.academy.com
+      - ip: 10.8.24.25
+        hostnames:
+        - ulapwcs600e.academy.com
+      - ip: 10.8.24.55
+        hostnames:
+        - ulapwcs700e.academy.com
+      - ip: 10.8.24.201
+        hostnames:
+        - ulapwcs800e.academy.com
+      - ip: 10.8.22.159
+        hostnames:
+        - plapwcs500e.academy.com
+      - ip: 74.125.124.128
+        hostnames:
+        - storage.googleapis.com
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      securityContext: {}
+      imagePullSecrets:
+      - name: aso-gcr-secret
+      schedulerName: default-scheduler
+  strategy:
+    type: Recreate
+

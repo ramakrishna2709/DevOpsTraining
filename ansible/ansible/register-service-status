@@ -1,0 +1,91 @@
+- name: Check if Apache is running
+  shell: pgrep apache2
+  ignore_errors: yes
+  changed_when: false
+  register: service_apache_status
+
+- name: Report status of Apache
+  fail:
+    msg: |
+      Service apache2 is not running.
+      Return code from `pgrep`:
+      {{ service_apache_status.rc }}
+  when: service_apache_status.rc != 0
+  
+  
+  - name: Check for apache status
+  service_facts:
+- debug:
+    var: ansible_facts.services.apache2.state
+    
+    
+# handles tomcat8
+- name: is tomcat8 already running?
+  shell: service tomcat8 status warn=false
+  register: _svc_tomcat8
+  failed_when: _svc_tomcat8.rc != 0 and ("unrecognized service" not in _svc_tomcat8.stderr)
+  ignore_errors: true
+  
+  
+  
+
+- name: restart tomcat8 if running
+  service: name=tomcat8 state=restarted
+  when: "_svc_tomcat8.rc == 0"
+
+# handles WAS
+- name: is WebSphere already running?
+  shell: service Node01_was.init status warn=false
+  register: _svc_websphere
+  failed_when: _svc_websphere.rc != 0 and ("unrecognized service" not in _svc_websphere.stderr)
+  ignore_errors: true
+
+- name: restart WebSphere if running
+  service: name=Node01_was.init state=restarted
+  when: "_svc_websphere.rc == 0"
+
+# vim:ft=ansible:
+
+
+#kill process
+
+- name: Get running processes list from remote host
+      ignore_errors: yes
+      shell: "ps -few | grep CrunchifyAlwaysRunningProgram | awk '{print $2}'"
+      register: running_processes
+ 
+    - name: Kill running processes
+      ignore_errors: yes
+      shell: "kill {{ item }}"
+      with_items: "{{ running_processes.stdout_lines }}"
+ 
+    - wait_for:
+        path: "/proc/{{ item }}/status"
+        state: absent
+      with_items: "{{ running_processes.stdout_lines }}"
+      ignore_errors: yes
+      register: crunchify_processes
+ 
+    - name: Force kill stuck processes
+      ignore_errors: yes
+      shell: "kill -9 {{ item }}"
+      with_items: "{{ crunchify_processes.results | select('failed') | map(attribute='item') | list }}"
+      
+      
+      
+     - name: Look for the "foo" process
+    shell: ps -ef |  grep foo | grep -v grep
+    register: process_list
+    changed_when: false  
+
+  - name: Start "foo" if needed
+    shell: nohup /bin/foo &
+    when: "process_list.stdout.find('foo') == -1"
+    
+      tasks:
+   - name: get service facts
+     service_facts:
+
+   - name: try to work out how to access the service
+     debug:
+       var: ansible_facts.services["oracle-tfa.service"]

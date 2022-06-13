@@ -1,0 +1,13 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: influxdb-pvc-NAMESPACE
+  namespace: NAMESPACE
+spec:
+  storageClassName: ssd
+  accessModes:
+    - ReadWriteMany
+  volumeName: influxdb-pv-NAMESPACE
+  resources:
+    requests:
+      storage: STORAGESIZE

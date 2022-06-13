@@ -1,0 +1,325 @@
+node(env.JenkinsSlaveNode){
+	def checkoutBranch = env.GIT_BRANCH
+	def gimageName = env.JOB_NAME.tokenize( '_' )[1]
+	def envName = env.JOB_NAME.tokenize( '_' )[0]
+	String repoName = ("https://bitbucket.org/academysports/" + env.repositoryName + ".git");
+	def pipelineRepo = 'https://bitbucket.org/academysports/devops-cd-pipeline.git'
+	def pipelineBranch = env.pipelinebname
+	def d = new Date(currentBuild.startTimeInMillis) 
+    def tz = TimeZone.getTimeZone('CST') 
+	def revID = d.format("yyyyMMMdd'T'HHmmz", tz)
+	def imageTagName = env.imageTagName
+	def buildmethod = env.BuildType
+	def regexPattern = ~/(?i)([a-z0-9]+-(\d)+-[a-z0-9]+-[a-z0-9-\.]+)/
+	env.buildmethod = "$buildmethod"
+	env.gimageName = "$gimageName"
+	env.imageTagName = "$imageTagName"
+	env.envName = "$envName"
+	env.revID = "$revID"
+	env.checkoutBranch = "$checkoutBranch"
+    env.regexPattern = "$regexPattern"
+	currentBuild.result = "SUCCESS"
+	String namespace = envName
+	
+	 //Setting up namespace variable
+    if (env.envName.equals("uat") || env.envName.equals("prod")){
+        namespace = "default"
+    }
+    
+    env.namespace = "$namespace"
+    println namespace
+	
+	try{
+		stage('Reading Properties'){
+			//TAKE CHECKOUT FROM THE BRANCH
+			checkout([$class: 'GitSCM', branches: [[name: "${pipelineBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: "${pipelineRepo}"]]])
+			
+			//Reading properties
+            def content = readFile "properties/${envName}.properties"
+			
+			Properties properties = new Properties()
+			InputStream is = new ByteArrayInputStream(content.getBytes());
+			properties.load(is)
+			//Setting up env variables
+			env.sonarUrl = properties."${envName}.sonarUrl"
+			env.kubeHome = properties."${envName}.nginxKubeHome"
+			env.dockerHome = properties."${envName}.nginxDockerHome"
+			env.deploymentStrategy = properties."${envName}.deploymentStrategy"
+            env.timezoneCountry = properties."${envName}.timezoneCountry"
+            env.timezoneState = properties."${envName}.timezoneState"
+			env.vCPUMax = properties."${envName}.${gimageName}.vCPUMax"
+			env.vMemoryMax = properties."${envName}.${gimageName}.vMemoryMax"
+			env.vCPUMin = properties."${envName}.${gimageName}.vCPUMin"
+			env.vMemoryMin = properties."${envName}.${gimageName}.vMemoryMin"
+			env.vCPUPercent = properties."${envName}.${gimageName}.vCPUPercent"
+			env.minReplicas = properties."${envName}.${gimageName}.minReplicas"
+			env.maxReplicas = properties."${envName}.${gimageName}.maxReplicas"
+			env.port = properties."${envName}.${gimageName}.port"
+			env.appPNumber = properties."${envName}.${gimageName}.appPNumber"
+			env.internalLB = properties."${envName}.${gimageName}.internalLB"
+			//env.heapXmx = properties."${envName}.${gimageName}.heapXmx"
+			//env.heapXmn = properties."${envName}.${gimageName}.heapXmn"
+			env.javaOpts = properties."${envName}.${gimageName}.javaOpts"
+			env.hostAliasIP = properties."${envName}.${gimageName}.hostAliasIP"
+			env.hostAliasName = properties."${envName}.${gimageName}.hostAliasName"
+			env.sonarExclusion = properties."${envName}.${gimageName}.sonarExclusion"
+            env.livenessProbe = properties."${envName}.${gimageName}.livenessProbe"
+			env.readinessProbeDelay = properties."${envName}.${gimageName}.readinessProbeDelay"
+            env.livenessProbeDelay = properties."${envName}.${gimageName}.livenessProbeDelay"
+				
+			 //Reading internal LB IP
+			if(internalLB.equals("True")){
+				env.internalLBIP = properties."${envName}.${gimageName}.internalLBIP"
+			}
+			
+			//Creating tag string
+			if(buildmethod.equals("Build Only") || buildmethod.equals("Build & Deploy")){
+				//Checking the branch name against the regular expression
+				//If checkoutbranch parameter value is an existing tag, extract the branch from it
+				if(checkoutBranch ==~ regexPattern){
+					def extractedBranchName = ExtractBranchName(checkoutBranch)
+					env.tagName = "${envName}-${BUILD_NUMBER}-${revID}-${extractedBranchName}"
+				}
+				else{
+					env.tagName = "${envName}-${BUILD_NUMBER}-${revID}-${checkoutBranch}"
+				}
+				
+			}
+			//Extract branch name from tag provided
+			else if(buildmethod.equals("Tag Only") || buildmethod.equals("Tag & Deploy")){
+				def extractedBranchName = ExtractBranchName(imageTagName)
+				env.tagName = "${envName}-${BUILD_NUMBER}-${revID}-${extractedBranchName}"
+			}
+			else{
+				env.tagName = imageTagName
+			}
+			println tagName
+		}
+		
+		if( buildmethod.equals("Build Only") || buildmethod.equals("Build & Deploy") ){
+		
+			stage('Checkout'){
+                println "Inside Checkout stage"
+			    //Commenting out for testing purpose
+                //sh "env && echo -e $BUILD_ID"
+			    checkout([$class: 'GitSCM', branches: [[name: "${checkoutBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: "${repoName}"]]])
+	        }
+			
+ 			 stage('Build'){
+				sh '''
+					target_dir=target
+					cd ${WORKSPACE}
+					rm -rf $target_dir;
+					mkdir $target_dir;
+					cp ${WORKSPACE}/{robots.txt,nginx.conf,google42789106c82fabfb.html,google32235799fbac4bf2.html,googlefe65efb55a1e6371.html,extra.conf,manifest.json} ${WORKSPACE}/$target_dir					
+					cp -r ${WORKSPACE}/html ${WORKSPACE}/$target_dir
+					cp -r ${WORKSPACE}/icons ${WORKSPACE}/$target_dir
+					
+					cd $target_dir
+
+                    ##Replacing ENVNAME placeholder in nginx.conf with actual value
+                    sed -i "s/ENVNAME/$envName/g" nginx.conf
+				'''
+			}  
+			
+			stage('Apply Tag'){
+                //withCredentials([usernamePassword(credentialsId: 'ASOGCPBitbucketCredentials', passwordVariable: 'bitbucketPass', usernameVariable: 'bitbucketUser')]) {
+                withCredentials([usernamePassword(credentialsId: 'ee9ee2a1-1610-4102-ab77-512fa52a8ed4', passwordVariable: 'bitbucketPass', usernameVariable: 'bitbucketUser')]) { 
+				    tagRepo = "https://" + bitbucketUser + ":" + bitbucketPass + "@bitbucket.org/academysports/" + env.repositoryName + ".git"   
+				    sh "echo $tagName"
+                    sh "echo $tagRepo"
+				    //sh "git tag -m 'Tag for ${gimageName}' -a '$tagName' "  //Uncommented for actual testing
+				    //sh "git push $tagRepo : '$tagName'"                     //Uncommented for actual testing
+                    sh("git tag -a ${tagName} -m 'Tag for ${gimageName}'")
+                    sh("git push https://${bitbucketUser}:${bitbucketPass}@bitbucket.org/academysports/${repositoryName}.git --tags")
+                }
+			}
+			
+			stage('Build Docker Image'){
+                checkout([$class: 'GitSCM', branches: [[name: "${pipelineBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: "${pipelineRepo}"]]])
+                sh '''
+                        cd ${WORKSPACE}
+						
+						sudo docker pull us.gcr.io/just-slate-88918/nginx:alpine-3.8-nginx-1.14.0-vts-0.1.18
+						imageName="us.gcr.io/just-slate-88918/${gimageName}:${tagName}"	 
+						
+                        sudo docker build -t ${imageName} --pull=true --file=${dockerHome}/Dockerfile ${WORKSPACE}     #Uncommented for actual testing
+                        echo $imageName
+                    '''
+                    println dockerHome
+                } 
+		}
+		
+		if(buildmethod.equals("Tag Only") || buildmethod.equals("Tag & Deploy")){
+            stage('Retagging Docker Image'){
+		        sh '''
+                    imageOldName="us.gcr.io/just-slate-88918/${gimageName}:${imageTagName}"
+                    imageNewName="us.gcr.io/just-slate-88918/${gimageName}:${tagName}"
+                    sudo docker pull ${imageOldName}     #Uncommented for actual testing
+                    sudo docker tag ${imageOldName} ${imageNewName}    #Uncommented for actual testing
+                    echo $imageNewName
+			    '''
+	        }
+        }
+		
+		//Run this stage for every build type except "Deploy Only"
+        if(!buildmethod.equals("Deploy Only")){
+		        sh '''
+                    sudo docker push us.gcr.io/just-slate-88918/${gimageName}:${tagName}     #Uncommented for actual testing
+                    echo "Image to push is - us.gcr.io/just-slate-88918/${gimageName}:${tagName}"
+			    '''
+        }
+		
+		 if( buildmethod.equals("Deploy Only") || buildmethod.equals("Build & Deploy") || buildmethod.equals("Tag & Deploy"))
+	    {
+	        if(currentBuild.result=='SUCCESS')
+		    {   
+                stage('Deploying to Kubernetes'){
+					checkout([$class: 'GitSCM', branches: [[name: "${pipelineBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: "${pipelineRepo}"]]])
+                    sh '''
+                        sleep 2m    #Uncommented for actual testing
+                        serviceName=${gimageName}
+                        deploymentType='deployment'
+                        serviceType='service'
+
+                        #Checking whether service needs internal LB
+                        if [ "${internalLB}" == "True" ]
+                        then
+                            serviceType='service-internalLB'
+                        fi
+                        
+                        upperEnvName=$( echo -e $envName | awk -F "-" '{print $1}' | tr '[:lower:]' '[:upper:]' )
+                        kubernetesFileLocation=${kubeHome}					
+                        export PATH=$HOME/google-cloud-sdk/bin:$PATH
+						
+						if [ ! -z ${serviceName} ] && [ ! -z ${serviceType} ]
+                        then
+                            cd ${kubernetesFileLocation}
+
+                            #Creating deployment.yml from different parts
+                            if [ -f ${deploymentType}.yml ]
+                            then
+                                rm -rf ${deploymentType}.yml
+                            fi
+                            cat deployment-Part1.yml >> ${deploymentType}.yml
+                            echo "" >> ${deploymentType}.yml    #For adding new line
+                            if [ ${livenessProbe} == "True" ]
+                            then
+                                cat deployment-PartLivenessProbe.yml >> ${deploymentType}.yml
+                                echo "" >> ${deploymentType}.yml    #For adding new line
+                            fi
+                            cat deployment-PartHostAliases.yml >> ${deploymentType}.yml
+                            echo "" >> ${deploymentType}.yml    #For adding new line
+                            if [ ${deploymentStrategy} == "Rolling" ]
+                            then
+                                cat deployment-PartDeploymentStrategyRolling.yml >> ${deploymentType}.yml
+                                echo "" >> ${deploymentType}.yml    #For adding new line
+                            else
+                                cat deployment-PartDeploymentStrategyRecreate.yml >> ${deploymentType}.yml
+                                echo "" >> ${deploymentType}.yml    #For adding new line
+                            fi
+
+
+                            #Putting values in placeholders in deployment.yml file
+                            sed -i "s/BUILDVERSION/$tagName/g" ${deploymentType}".yml"
+                            sed -i "s/APPLICATIONNAME/$gimageName/g" ${deploymentType}".yml"
+                            sed -i "s/ENVIRONMENTNAMEUPPER/$upperEnvName/g" ${deploymentType}".yml"
+                            sed -i "s/ENVIRONMENTNAME/$envName/g" ${deploymentType}".yml"
+                            sed -i "s/VCPUMAX/$vCPUMax/g" ${deploymentType}".yml"
+                            sed -i "s/VMEMORYMAX/$vMemoryMax/g" ${deploymentType}".yml"
+                            sed -i "s/VCPUMIN/$vCPUMin/g" ${deploymentType}".yml"
+                            sed -i "s/VMEMORYMIN/$vMemoryMin/g" ${deploymentType}".yml"
+                            sed -i "s/APPPNUMBER/$appPNumber/g" ${deploymentType}".yml"
+                            #sed -i "s/HEAPXMX/$heapXmx/g" ${deploymentType}".yml"
+                            #sed -i "s/HEAPXMN/$heapXmn/g" ${deploymentType}".yml"
+                            sed -i "s/NAMESPACE/$namespace/g" ${deploymentType}".yml"
+                            sed -i "s/HOSTALIASIP/$hostAliasIP/g" ${deploymentType}".yml"
+                            sed -i "s/HOSTALIASNAME/$hostAliasName/g" ${deploymentType}".yml"
+                            sed -i "s/COUNTRY/$timezoneCountry/g" ${deploymentType}".yml"
+                            sed -i "s/STATE/$timezoneState/g" ${deploymentType}".yml"
+
+                            #Check deployment already exists or not
+                            if [ $( kubectl get ${deploymentType} -n $namespace | grep -c ${serviceName} ) -ge 1 ]
+                            then
+                                kubectl apply -f $( echo -e ${deploymentType}".yml" )  -n $namespace  ##Uncommented for actual testing
+                                echo "Update deployment"
+                            else
+                                kubectl create --save-config -f $( echo -e ${deploymentType}".yml" ) -n $namespace   ##Uncommented for actual testing
+                                echo "Create deployment"
+                            fi
+
+                            #Putting values in placeholders in hpa.yml
+                            sed -i "s/minHPA/$minReplicas/g" "hpa.yml"
+                            sed -i "s/maxHPA/$maxReplicas/g" "hpa.yml"
+                            sed -i "s/VCPUPERCENT/$vCPUPercent/g" "hpa.yml"																
+                            sed -i "s/APPLICATIONNAME/$gimageName/g" "hpa.yml"
+                            sed -i "s/NAMESPACE/$namespace/g" "hpa.yml"
+
+                            #Check HPA already exists or not
+                            if [ $( kubectl get hpa -n $namespace | grep -c ${serviceName} ) -ge 1 ]
+                            then
+                                kubectl apply -f hpa.yml  -n $namespace  ##Uncommented for actual testing
+                                echo "Update HPA"
+                            else
+                                kubectl create -f hpa.yml  -n $namespace --save-config   ##Uncommented for actual testing
+                                echo "Create HPA"
+                            fi
+
+                            #Putting values in placeholders in sevice.yml or internalLB.yml
+                            sed -i "s/APPLICATIONNAME/$gimageName/g" ${serviceType}".yml"
+                            sed -i "s/ENVIRONMENTNAMEUPPER/$upperEnvName/g" ${serviceType}".yml"
+                            sed -i "s/ENVIRONMENTNAME/$envName/g" ${serviceType}".yml"
+                            sed -i "s/PORT/$port/g" ${serviceType}".yml"
+                            sed -i "s/APPPNUMBER/$appPNumber/g" ${serviceType}".yml"
+                            sed -i "s/NAMESPACE/$namespace/g" ${serviceType}".yml"
+
+                            #Putting internal LB IP
+                            if [ $internalLB == 'True' ]
+                            then
+                                sed -i "s/INTERNALLBIP/$internalLBIP/g" ${serviceType}".yml"
+                            fi
+                            
+                            #Check service already exists or not
+                            if [ $( kubectl get service -n $namespace | grep -c ${serviceName} ) -ge 1 ]
+                            then
+                                kubectl apply -f $( echo -e ${serviceType}".yml" ) -n $namespace   ##Uncommented for actual testing
+                                echo "Update service"
+                            else
+                                kubectl create --save-config -f $( echo -e ${serviceType}".yml" )  -n $namespace   ##Uncommented for actual testing
+                                echo "Create service"
+                            fi
+                        fi
+                        #Printing just for testing purpose
+                        cat ${deploymentType}".yml"
+                        cat hpa.yml
+                        cat ${serviceType}".yml"
+						
+					'''
+				}
+			}
+		}
+		
+		
+	}
+		
+	catch (err) {
+		currentBuild.result = "FAILURE"
+		//step([$class: 'Mailer', notifyEveryUnstableBuild: true, recipients: 'hkhan2@sapient.com mramanathan@sapient.com', sendToIndividuals: false])
+		//throw err
+	}
+}
+
+
+//Function to extract branch name from tag string
+def ExtractBranchName(sourceString) {
+    def extractedBranchName = ''
+    def n = 3
+    def pos = sourceString.indexOf("-")
+                
+    //This is to take out the branch name from existing tag
+    while (--n > 0 && pos != -1){
+        pos = sourceString.indexOf("-", pos + 1)
+    }
+    extractedBranchName = sourceString.substring(pos + 1)
+    return extractedBranchName
+}

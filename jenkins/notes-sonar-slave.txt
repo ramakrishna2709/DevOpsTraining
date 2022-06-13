@@ -1,0 +1,34 @@
+
+
+Build : ---> Vprofile.war
+
+Tomcat:
+
+    webapps
+	   vprofile.war
+	   
+	   
+==> Deployment steps
+
+  1. Ansible 
+  2. Deploy tomcat container 
+  3. SSH connection  => Publish over ssh
+  
+  shell script:
+  
+     ssh user@ip 
+	   cp vprofile.war /opt/tomcat/webapps/vprofile.war
+	   service tomcat restart
+	
+	
+	access ur applicaion:
+	
+	 http://102.90.204.13:8081\vporifle
+	 
+	 =====================slaves\nodes
+	 
+	 Master-slave set up
+	 
+	 
+	 
+  

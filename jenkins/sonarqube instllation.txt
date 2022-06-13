@@ -1,0 +1,162 @@
+Installing sonarqube on centos 
+SonarQube is an open source tool for source code quality management, code analysis etc. 
+It is the most widely used tool for code coverage and analysis
+
+Note: SonarQube requires atleast 2GB of RAM to run efficiently. Please check the SonarQube official doc to know the detailed prerequisites.
+
+you can install database Mysql or postgresql or Mariadb as per your environment.
+
+
+steps:=================================================
+
+Step 1: Installing Java ====================================
+ yum install java-1.8.0-openjdk-devel.x86_64
+  java -version
+  
+  Step 2: Install and configure mysql ========================
+  
+  wget http://repo.mysql.com/mysql-community-release-el7-5.noarch.rpm
+  rpm -ivh mysql-community-release-el7-5.noarch.rpm
+ yum install mysql-server
+
+ 
+>>>>>>>>>. once mysql is installed start service 
+ 
+ systemctl start mysqld
+ >>>>>>>>>>>>.configure mysql by running mysql_secure_installation
+ 
+ mysql_secure_installation
+ 
+ step 3: create db and user for sonarqube>>>>>>>>>>>>>>>>>>>>>>>.
+Login from  mysql -u root -p and run below commands from mysql shell
+
+mysql -u root -p
+
+CREATE DATABASE sonarqube_db;
+CREATE USER 'sonarqube_user'@'localhost' IDENTIFIED BY 'password';
+
+
+GRANT ALL PRIVILEGES ON sonarqube_db.* TO 'sonarqube_user'@'localhost' IDENTIFIED BY 'password';
+FLUSH PRIVILEGES;
+exit
+
+>>>>>>>>>>>create user
+useradd sonarqube
+passwd sonarqube
+
+Step 4: Download and install sonarqube >>>>>>>>>>>===================
+
+https://www.sonarqube.org/downloads/
+cd /opt
+wget https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-6.7.7.zip
+unzip sonarqube-6.7.7.zip
+mv sonarqube-6.7.7 /opt/sonarqube
+
+chown  -R sonarqube:sonarqube /opt/sonarqube
+
+open the SonarQube configuration file 'conf/sonar.properties' ===================================
+
+vi /opt/sonarqube/conf/sonar.properties
+
+sonar.jdbc.username=sonarqube_user
+sonar.jdbc.password=password
+sonar.jdbc.url=jdbc:mysql://localhost:3306/sonarqube_db?useUnicode=true&characterEncoding=utf8&rewriteBatchedStatements=true&useConfigs=maxPerformance
+
+>>>>>>>>>>>>>..Open the SonarQube startup script and specify the sonarqube user details. ===============================
+
+vi /opt/sonarqube/bin/linux-x86-64/sonar.sh
+
+Add below entry in above file
+
+RUN_AS_USER=sonarqube
+
+Step 5: start sonarQube =============================
+
+/opt/sonarqube/bin/linux-x86-64/sonar.sh start
+
+>>>>>>>>>>>>>>>>>>>>>..That’s all we have configured sonarqube successfully in centos.Now you can access it using http://ip_address:9000
+
+Step 6: configure sonarqube as systemd service ============================
+
+vi /etc/systemd/system/sonar.service
+
+>>>>>>>>>>>>>>>>>>Addbelow lines
+
+[Unit]
+Description=SonarQube service
+After=syslog.target network.target
+[Service]
+Type=forking
+ExecStart=/opt/sonarqube/bin/linux-x86-64/sonar.sh start
+ExecStop=/opt/sonarqube/bin/linux-x86-64/sonar.sh stop
+User=sonarqube
+Group=sonarqube
+Restart=always
+[Install]
+WantedBy=multi-user.target
+
+
+>>>>>>>>>>>>>..Now stop  sonarqube  service once and start with systemd as below
+/opt/sonarqube/bin/linux-x86-64/sonar.sh stop
+systemctl start sonar
+ systemctl enable sonar
+ systemctl status sonar
+ 
+ 
+ ===============commnds to run sonar=============
+ 
+ sonar:sonar --exclude /test.txt*
+              --include /*.txt
+ 
+ clean verify sonar:sonar -Dsonar.host.url=http://35.184.227.226:9000/   -Dsonar.login=d776595fe1f527cdd138708af8492a74eaf802c4 -Dsonar.projectKey=java-app 
+
+ 
+ >>>>>>>>>>>>>>>>>>>>>......USER LOGIN DETIALS
+ 
+ The default username and password of SonarQube is admin and admin.
+ ====================Token generation====
+ d776595fe1f527cdd138708af8492a74eaf802c4
+ 
+ mvn sonar:sonar \
+  -Dsonar.host.url=http://35.184.227.226:9000 \
+  -Dsonar.login=d776595fe1f527cdd138708af8492a74eaf802c4
+ >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>....configuring with jenkins>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>....
+ 
+ 
+ Step 1. Open SonarQube server- Go to Administration > click on Security > Users > Click on Tokens > Generate token with some name > Copy the token ,
+
+ it will be used in Jenkins for Sonar authentication.
+ 
+Step 2. Setup SonarQube with Jenkins- Go to Manage Jenkins > Configure system > SonarQube server section > Add SonarQube > Name it,
+ provide Server Url as http://<IP>:<port> > and authentication token copied from SonarQube Server > Apply and Save 
+ 
+ Step 3. Install SonarQube plugin to Jenkins. Go to Manage Jenkins > Manage Plugins > Available > Search for SonarQube Scanner> Install.
+ 
+ Configure Sonar Scanner in Jenkins : Go to Mange Jenkins > Global Tool Configuration > Scroll for SonarQube Scanner > Add sonar scanner > name it, 
+ Step 4. Create a Job- New Item > Name and select a project type (in my case I am selecting Maven project you can opt for freestyle as well)
+ 
+ Step 5. Set Git under SCM section and use * * * * * for Poll SCM under Build Trigger section. Under Build Environment section add pre-buid step > select Execute SonarQube Scanner
+ 
+  STEP6 Build -> Execute SonarQube Scanner .
+
+  Provide the location of sonar-project.properties or provide details directly for static code analysis.
+*Note: To execute a sonar scan, we need to create a properties file to instruct sonar scanner on some of the details of the project. Either create the following file in the root directory of your project or write it in the configuration page of your job in Jenkins.
+# Required metadata
+#projectKey must be unique in a given SonarQube instance
+sonar.projectKey=java-sonar-runner-simple
+#This is the name & version displayed in the SonarQube user interface.
+sonar.projectName= project analyzed with the SonarQube Runner
+sonar.projectVersion=1.0
+# Comma-separated paths to directories with sources (required)
+#path is relative to the sonar-project.properties file. Replace “\” by “/” on Windows.
+#Since SonarQube 4.2 this property is optional if sonar.modules is set.
+#If not set, SonarQube starts looking for source code from the directory containing the
+#sonar-project.properties file.
+sonar.sources=.
+# Encoding of the source files
+sonar.sourceEncoding=UTF-8
+sonar.sources is the main property for static code analysis. With this property, you inform SonarQube which directory needs to be analyzed.
+ 
+ 
+ 
+ 

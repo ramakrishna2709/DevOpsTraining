@@ -1,0 +1,128 @@
+========================apache====================================
+
+FROM ubuntu:12.04
+
+MAINTAINER tester
+
+RUN apt-get update && apt-get install -y apache2 && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+ENV APACHE_RUN_USER www-data
+ENV APACHE_RUN_GROUP www-data
+ENV APACHE_LOG_DIR /var/log/apache2
+
+EXPOSE 80
+
+CMD ["/usr/sbin/apache2", "-D", "FOREGROUND"]
+
+
+=========================apache with base image ===================
+FROM httpd
+
+MAINTAINER NewstarCorporation
+
+
+EXPOSE 80
+================================tomcat= with custom image=====================
+
+FROM centos
+
+MAINTAINER tester@tester.com
+
+RUN mkdir /opt/tomcat/
+
+WORKDIR /opt/tomcat
+RUN curl -O http://mirrors.estointernet.in/apache/tomcat/tomcat-9/v9.0.31/bin/apache-tomcat-9.0.31.tar.gz
+RUN tar xvfz apache*.tar.gz
+RUN mv apache-tomcat-9.0.31/* /opt/tomcat/.
+RUN yum -y install java
+RUN java -version
+
+WORKDIR /opt/tomcat/webapps
+RUN curl -O -L https://tomcat.apache.org/tomcat-7.0-doc/appdev/sample/sample.war
+
+EXPOSE 8080
+
+CMD ["/opt/tomcat/bin/catalina.sh", "run"]
+
+
+==================tomcat was base image=================================
+
+
+FROM tomcat:8.0-alpine
+
+LABEL maintainer="abc@testing.com"
+
+WORKDIR /opt/tomcat/webapps
+ADD https://tomcat.apache.org/tomcat-7.0-doc/appdev/sample/sample.war /usr/local/tomcat/webapps/
+
+EXPOSE 8080
+
+CMD ["catalina.sh", "run"]
+
+
+=======================python==========================================
+===================nginx================
+https://github.com/Einsteinish/docker-nginx-hello-world.git
+
+
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>Docker network>>>>>>>>>>>>>>>>>>>>>>>>>>>..
+
+To view Docker networks, run:
+
+>>>>>>docker network ls
+To get further details on networks, run:
+
+>>>>>>>>docker network inspect
+>>.
+Docker creates three networks automatically on install: 
+bridge,
+none,
+host
+
+>>>>>assign netwrok
+docker run my_container --net=my_network
+
+>>>>>>docker network inspect bridge
+............>>>>>.
+docker network create --driver bridge my_network
+>>>docker network inspect my_network
+>>>>>>>>>>>>docker run --net=my_network --name=my_psql_db postgres
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>.linking container >>>>>>>>>>>>>>>>>>>>>>
+
+
+
+
+>>outside >>>>.
+
+
+vpc -> subnets -> ec2 ---- > nework -> app -> 
+
+docker ->
+
+ ec2-> docker ->contianer > network -> app
+ 
+ 
+  application: anode js -> front end -> backend -> mongodb
+  
+  :>
+  
+  expose : 8080:8090
+  
+  docker ip:
+  
+  http:///localhost:8080
+  
+  >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+  
+  
+   docker run -it --name container1 -v /root/data:/datavol1 busybox
+   
+   docker exec -it 78b bash
+   
+   ls : datavol1
+   
+   
+   

@@ -1,0 +1,4 @@
+[webservers]
+tomcat ansible_host=10.128.0.5 ansible_user=devops_practiceworks2019
+#tomcat-sever ansible_host=35.184.55.150 ansible_user=devops_practiceworks2019
+

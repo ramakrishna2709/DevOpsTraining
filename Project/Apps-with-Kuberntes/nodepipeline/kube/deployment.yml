@@ -1,0 +1,91 @@
+---
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: APPLICATIONNAME
+  namespace: NAMESPACE
+  labels:
+    app: APPLICATIONNAME
+  annotations:
+    deployment.kubernetes.io/revision: '1'
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: APPLICATIONNAME
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate      
+  template:
+    metadata:
+      name: APPLICATIONNAME
+      labels:
+        app: APPLICATIONNAME
+    spec:
+      containers:
+      - name: APPLICATIONNAME
+        image: us.gcr.io/just-slate-88918/APPLICATIONNAME:BUILDVERSION
+        env:
+        - name: NODE_ENV
+          value: NODEENVNAME
+        - name: PUBLISHER_HOSTNAME
+          value: http://PUBLISHERHOSTNAME 
+        - name: AUTHOR_HOSTNAME
+          value: http://AUTHORHOSTNAME
+        - name: COMPONENT_REGISTRY_URL
+          value: https://storage.googleapis.com/ENVIRONMENTNAME_component_registry_vol
+        - name: API_HOSTNAME
+          value: http://apizuulgateway
+        - name: TEMPLATE_REGISTRY_URL
+          value: http://apizuulgateway/api/template?url=
+        - name: BUILDNUMBER
+          value: "BUILD_NUMBER"
+        imagePullPolicy: Always
+        readinessProbe:
+          failureThreshold: 5
+          initialDelaySeconds: 60
+          periodSeconds: 5
+          successThreshold: 1
+          tcpSocket:
+            port: APPPNUMBER
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: "VCPUMAX"
+            memory: VMEMORYMAX
+          requests:
+            cpu: VCPUMIN
+            memory: VMEMORYMIN
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+              - SYS_ADMIN
+      restartPolicy: Always
+      hostAliases:
+      - ip: 10.8.31.205
+        hostnames:
+        - uat5int.academy.com
+      - ip: 10.8.24.204
+        hostnames:
+        - uat4int.academy.com
+      - ip: 10.8.31.206
+        hostnames:
+        - uat6int.academy.com
+      - ip: 10.8.31.207
+        hostnames:
+        - uat7int.academy.com  
+      - ip: 10.8.31.19
+        hostnames:
+        - perfint.academy.com
+      - ip: 10.8.21.203
+        hostnames:
+        - www500.academy.com
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      securityContext: {}
+      imagePullSecrets:
+      - name: aso-gcr-secret
+      schedulerName: default-scheduler

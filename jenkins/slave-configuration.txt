@@ -1,0 +1,64 @@
+============================jon confiuration for slave machne---=============================
+1.click on Manage Jenkins option.
+2. Then click on the option Manage Nodes.
+3. Click on the option New Node in the left menu.
+4.Provide a name for your slave node. For this example, we have named our slave machine as node1. Check the option Permanent Agent, and click on OK.
+5.After Clicking OK, following configuration page will appear for machine Slave1.
+Values for following configurations must be mentioned for setting up the slave machine:
+
+Description: The purpose of Node.
+# of executors: The maximum number of concurrent build that Jenkins may perform on this agent.
+Remote root directory: The path or directory of the agent machine(example: /home/machine1/jenkins).
+Launch Method:  Launch Agenct via SSH
+
+6.After selecting ssh methon, provide the Hostname of Slave machine and Credentails will be used with SSH with username along with Private Key.
+   Key have to use from jenkins master private Key 
+ save changes. 
+7. Now, Login Jenkins Slave machine. Go to, Manage Jenkins ? Manage Nodes, we will find our created Node node1.
+
+
+===============Aftet the configuration=========== Need to manadatory things set up == otherwise node will be offline=============
+
+1. Install java
+ sudo yum install java-1.8.0-openjdk-devel
+ 
+ 2. Install git
+   sudo yum install git curl wget
+ 3. Install maven( it depend on build project tools have to install) Ex: maven
+  sudo yum install maven
+
+8. Once its  done, you can verify the status of Node.. if everything will be fine, will get node status as online
+
+9. Finally, go to required job configuration, you can add this Label for slave
+10.it will build the job using slave server
+
+
+
+===========================
+SSH
+Master ==>
+==> ssh-keygen -t rsa
+  
+  
+  ==> id.rsa  => private key
+  ==> id.rsa.pub  => Pub key
+  
+ Slave : ==>
+  copy the master pub key and paste in authorized_keys file
+  permissions: chmod 600 authorized_keys
+  move .ssh
+  vi authorized_keys
+   ==> should paste the pub key of master server
+   
+ ==> Master can able to connect with slave
+ ssh username@Ipaddress
+ 
+ ==> connection is ok.. we can able to access
+ 
+ ==> jenkins node configuration==>  connection method with  login with ssh method
+ 
+ 
+  need use with ssh username with master ssh privatekey
+  
+ ==>
+ 

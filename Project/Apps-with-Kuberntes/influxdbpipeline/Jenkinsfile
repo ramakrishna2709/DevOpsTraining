@@ -1,0 +1,118 @@
+node(env.JenkinsSlaveNode) {
+	currentBuild.result = "SUCCESS"
+	def gimageName = env.JOB_NAME.tokenize( '_' )[1]
+	def envName = env.JOB_NAME.tokenize( '_' )[0]
+	String namespace = envName
+	def pipelineBranch = env.pipelinebname
+	//def kubeHome = params.kubeHome
+	env.gimageName = "$gimageName"
+	env.envName = "$envName"
+	//def namespace = params.namespace
+
+	//Setting up namespace variable
+    if (env.envName.equals("uat") || env.envName.equals("prod")){
+        namespace = "default"
+    }
+	
+    env.namespace = "$namespace"
+    println namespace
+	
+	try {
+	   
+		stage('Checkout'){
+			checkout([$class: 'GitSCM', branches: [[name: '*/'+pipelineBranch]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: 'https://bitbucket.org/academysports/devops-cd-pipeline.git']]])
+		}
+		print "reached here "
+	   
+		stage('Reading Properties'){
+                //Reading properties
+                def content = readFile "properties/${envName}.properties"
+
+                Properties properties = new Properties()
+                InputStream is = new ByteArrayInputStream(content.getBytes());
+                properties.load(is)
+                //Setting up env variables
+                env.k8sRegion = properties."${envName}.${gimageName}.k8sRegion"
+				env.k8sZone = properties."${envName}.${gimageName}.k8sZone"
+				env.storageSize = properties."${envName}.${gimageName}.storageSize"
+	   }
+
+	   if(currentBuild.result=='SUCCESS')
+		{
+			stage('Deploying to Kubernetes'){
+				sh '''
+				    cd ${WORKSPACE}/influxdbpipeline/kube
+					sleep 20s
+					serviceName='influxdb'
+					serviceType='deployment'					
+					export PATH=$HOME/google-cloud-sdk/bin:$PATH
+					if [ ! -z ${serviceName} ] && [ ! -z ${serviceType} ]
+					then
+						
+						#CHECK FOR STORAGE CLASS	
+						if [ $( kubectl get storageclass -n $namespace | grep -c "ssd" ) -eq 0 ]
+						then
+							sed -i "s/NAMESPACE/$namespace/g" storageclass.yaml
+							kubectl create -f storageclass.yaml --save-config
+						else
+							
+							sed -i "s/NAMESPACE/$namespace/g" storageclass.yaml
+							kubectl apply -f storageclass.yaml
+						fi
+						
+						#CHECK IF PERSISTENT VOLUME EXISTS
+						if [ $( kubectl get pv -n $namespace | grep -c "influxdb-pv-${namespace}"  ) -eq 0 ]
+						then
+							sed -i "s/NAMESPACE/$namespace/g" pv.yaml
+							sed -i "s/K8SREGION/$k8sRegion/g" pv.yaml
+							sed -i "s/K8SZONE/$k8sZone/g" pv.yaml
+							sed -i "s/STORAGESIZE/$storageSize/g" pv.yaml
+							kubectl create -f pv.yaml --save-config
+						else
+							sed -i "s/NAMESPACE/$namespace/g" pv.yaml
+							sed -i "s/K8SREGION/$k8sRegion/g" pv.yaml
+							sed -i "s/K8SZONE/$k8sZone/g" pv.yaml
+							sed -i "s/STORAGESIZE/$storageSize/g" pv.yaml
+							kubectl apply -f pv.yaml
+						fi
+						
+						#CHECK IF PERSISTENT VOLUME CLAIM EXISTS
+						if [ $( kubectl get pvc -n $namespace | grep -c "influxdb-pvc-${namespace}"  ) -eq 0 ]
+						then
+							sed -i "s/NAMESPACE/$namespace/g" pvc.yaml
+							sed -i "s/STORAGESIZE/$storageSize/g" pvc.yaml
+							kubectl create -f pvc.yaml --save-config
+						else
+							sed -i "s/NAMESPACE/$namespace/g" pvc.yaml
+							sed -i "s/STORAGESIZE/$storageSize/g" pvc.yaml
+							kubectl apply -f pvc.yaml
+						fi
+						
+						if [ $( echo -e ${serviceType} | grep -c deployment ) -eq 1 ] && [ $( kubectl get deployment -n $namespace | grep -c ${serviceName} ) -eq 0 ]
+						then
+							sed -i "s/NAMESPACE/$namespace/g" deployment.yml
+							kubectl create -f deployment.yml --save-config
+						else
+							sed -i "s/NAMESPACE/$namespace/g" deployment.yml
+							kubectl apply -f deployment.yml
+						fi
+
+						if [ $( kubectl get service -n $namespace | grep -c ${serviceName} ) -eq 0 ]
+						then
+							sed -i "s/NAMESPACE/$namespace/g" service.yml
+							kubectl create -f service.yml --save-config
+						else
+							sed -i "s/NAMESPACE/$namespace/g" service.yml
+							kubectl apply -f service.yml
+						fi
+					fi
+				'''
+			}
+		}
+	}
+	catch (err) {
+        currentBuild.result = "FAILURE"
+            step([$class: 'Mailer', notifyEveryUnstableBuild: true, recipients: 'hkhan2@sapient.com mramanathan@sapient.com', sendToIndividuals: false])
+        throw err
+    }
+}

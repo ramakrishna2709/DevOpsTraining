@@ -1,0 +1,39 @@
+apiVersion: apps/v1 #  for k8s versions before 1.9.0 use apps/v1beta2  and before 1.8.0 use extensions/v1beta1
+kind: Deployment
+metadata:
+  name: redis-slave
+  namespace: NAMESPACE
+spec:
+  selector:
+    matchLabels:
+      app: redisnw
+      role: slave
+      tier: backend
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: redisnw
+        role: slave
+        tier: backend
+    spec:
+      containers:
+      - name: slave
+        image: us.gcr.io/just-slate-88918/redisslave:v1
+        resources:
+          requests:
+            cpu: 100m
+            memory: 1024Mi
+        env:
+        - name: GET_HOSTS_FROM
+          value: dns
+        ports:
+        - containerPort: 6379
+      - image: us.gcr.io/just-slate-88918/redis_exporter:latest
+        name: redis-exporter
+        ports:
+        - containerPort: 9121
+          name: port9121
+          protocol: TCP
+      imagePullSecrets:
+      - name: aso-gcr-secret

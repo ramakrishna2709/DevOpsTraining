@@ -1,0 +1,7 @@
+Step 1 — Configuring Ansible
+Step 2 — Creating a Playbook
+Step 3 — Installing Apache
+Step 4 — Configuring Apache Modules
+Step 5 — Configuring Apache Options
+Step 6 — Configuring Virtual Hosts
+Step 7 — Using a Git Repository For Your Website for cloning sample index.html

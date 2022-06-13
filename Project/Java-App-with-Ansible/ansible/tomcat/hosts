@@ -1,0 +1,3 @@
+slave ansible_host=35.238.190.214 ansible_user=ravishankar5358
+[web]
+slave

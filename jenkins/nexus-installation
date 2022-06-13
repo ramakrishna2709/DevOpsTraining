@@ -1,0 +1,49 @@
+========Install OpenJDK 8:
+sudo apt-get install openjdk-8-jdk
+=========Check which JDK-Versions are available on your system perform:
+sudo update-java-alternatives --list
+java -version
+===========set environment variables
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-amd64
+export PATH=$PATH:$JAVA_HOME/bin
+
+=========================Nexus installation steps =============
+1. https://help.sonatype.com/repomanager3/download
+	
+sudo mkdir /app && cd /app
+ sudo wget https://sonatype-download.global.ssl.fastly.net/nexus/3/nexus-3.0.2-02-unix.tar.gz
+   sudo tar -xvf nexus-3.0.2-02-unix.tar.gz
+  sudo mv nexus-3.0.2-02 nexus
+  sudo adduser nexus
+  sudo chown -R nexus:nexus /app/nexus
+  sudo ls -ltr
+  sudo vi /app/nexus/bin/nexus.rc
+  =====update user
+  run_as_user="nexus" =====
+  
+  #sudo vi /app/nexus/bin/nexus.vmoptions
+  sudo ln -s /app/nexus/bin/nexus /etc/init.d/nexus
+  sudo chkconfig --add nexus
+  sudo chkconfig --levels 345 nexus on
+  sudo service nexus start
+  sudo service nexus status
+  sudo ps -ef |grep nexus
+  sudo service nexus status
+  
+  =======visit site visit http://yourIP:8081
+=====default credentails
+uname/pwd: admin/admin123
+
+
+===============reference links:
+https://devopscube.com/how-to-install-latest-sonatype-nexus-3-on-linux/
+https://drmanalo.github.io/blog/2017/installing-nexus-centos7.html
+
+
+
+
+=============================================Nexus configuration in jenkins===================
+
+ Install "Nexus Artifact Uploader" 
+ 
+ 

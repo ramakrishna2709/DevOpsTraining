@@ -1,0 +1,17 @@
+[webservers]
+#tomcat-sever ansible_host=10.128.0.5 ansible_user=jenkins
+tomact ansible_host=10.128.0.5 ansible_user=devops_practiceworks2019
+#bar.example.com
+10.128.0.5 
+
+[webservers:vars]
+ntp_server=ntp.atlanta.example.com
+proxy=proxy.atlanta.example.com
+
+#[dbservers]
+# dbserver 10.128.0.4
+
+#[allservers:children]
+#weservers
+#dbservers
+

@@ -1,0 +1,13 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: jenkins-master-k8s-pvc
+  namespace: jenkins
+spec:
+  storageClassName: ssd
+  accessModes:
+    - ReadWriteMany
+  volumeName: jenkins-master-k8s
+  resources:
+    requests:
+      storage: 500G

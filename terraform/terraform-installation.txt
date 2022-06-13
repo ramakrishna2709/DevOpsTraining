@@ -1,0 +1,243 @@
+1)>>>>>>>>>...Terraform is a software which allows you to manage cloud infrastructure resources from code efficiently.  
+2)>>>>>>>>>...You can use Terraform to build, change, and version infrastructure deployed on proprietary cloud providers or your own infrastructure on premises.
+
+3)>>>>>>>>>...It supports cloud service providers like AWS, Google Cloud Platform, Azure, and many others.
+
+4)>>>>>>>>....Terraform is distributed as a binary package for all supported platforms and architectures.
+ Terraform runs as a single binary named terraform. 
+ 
+ 
+ 
+>>>>>>>>>>>>>>>>>>>>>..installation centos
+sudo wget https://releases.hashicorp.com/terraform/0.12.2/terraform_0.12.2_linux_amd64.zip
+sudo unzip ./terraform_0.12.2_linux_amd64.zip –d /usr/local/bin
+
+>>>>>>>>>>>...verfy the version>>>>>>>>
+
+terraform –-version
+
+
+.tf
+
+
+files:
+
+ >>> test
+ 
+		 main.tf
+			providers:=> aws, azure, gcp,oc, docker
+			ec2instance:
+			sg:
+			
+			
+			
+			> ec2 instance ---> abc
+		 
+		 variables.tf
+		 
+		      ec2name: test
+			  
+			$(workspace}.tfvars
+			qa.tfvars
+			
+		 
+		 output.tf
+		 
+			 -> abc.publicIp
+			 -> abc.privateIp
+		 
+			 
+		 
+		 modules
+			module1
+			  main.tf
+			  varaibles.tf
+			  
+		workspaces
+		  dev
+		     > all .tf files 
+		  qa
+		  
+		    > all .tf files
+         
+ 
+ 
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>intro=======================
+
+Terraform code is written in a language called HCL in files with the extension .tf. 
+It is a declarative language, so your goal is to describe the infrastructure you want, and Terraform will figure out how to create it. 
+Terraform can create infrastructure across a wide variety of platforms, or what it calls providers, including AWS, Azure, Google Cloud, DigitalOcean, and many others.
+
+You can write Terraform code in just about any text editor. 
+If you search around, you can find Terraform syntax highlighting support for most editors (note, you may have to search for the word “HCL” instead of “Terraform”), including vim, emacs, Sublime Text, Atom, Visual Studio Code, and IntelliJ (the latter even has support for refactoring, find usages, and go to declaration).
+export AWS_SECRET_ACCESS_KEY=(your secret access key)
+
+1. keep the keys in terraform files(not used in dev/production)
+2. environment varaibles
+3. credetails files.. (~.aws/credentails)
+4. account id/iam roles
+
+------------------------------------------------------------------------
+
+>>>>>>>>>>>>>>>>>.common commands:>>>>>>>>>>>>>>>>>>>>>>>
+apply, init,plan, validate, show,providers, destroy, env, import, version, output,
+
+Common commands:
+    apply              Builds or changes infrastructure
+    console            Interactive console for Terraform interpolations
+    destroy            Destroy Terraform-managed infrastructure
+    env                Workspace management
+    fmt                Rewrites config files to canonical format
+    get                Download and install modules for the configuration
+    graph              Create a visual graph of Terraform resources
+    import             Import existing infrastructure into Terraform
+    init               Initialize a Terraform working directory
+    output             Read an output from a state file
+    plan               Generate and show an execution plan
+    providers          Prints a tree of the providers used in the configuration
+    refresh            Update local state file against real resources
+    show               Inspect Terraform state or plan
+    taint              Manually mark a resource for recreation
+    untaint            Manually unmark a resource as tainted
+    validate           Validates the Terraform files
+    version            Prints the Terraform version
+    workspace          Workspace management
+	
+	
+	
+	
+
+>>>>>>>>>>>>>>>>>>>>>>>>>..
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>===================================
+
+Prerequisites
+1: Existing AWS Account(OR Setup a new account)
+2: IAM full access(OR at least have AmazonEC2FullAccess)
+3: AWS Credentials(AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+
+..............................................................>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+>>>>>>>>>>>>>>cloud authentication with GCP>>>>>>>>>>>>>
+
+export GOOGLE_CLOUD_KEYFILE_JSON={{path}}
+
+filename: practice-serviceaccount.json
+
+
+>>>>>>>>>>>>>>>>>>>>>>>Resource creation ->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+provider "google" {
+credentials = "${file("CREDENTIALS_FILE.json")}"
+project     = "PROJECT_NAME"
+region      = "REGION_NAME"
+}
+-------------------
+
+provider "google" {
+  project = "practice-263517"
+  region  = "us-central1"
+  zone    = "us-central1-c"
+}
+
+resource "google_compute_instance" "vm_instance" {
+  name         = "terraform-instance"
+  machine_type = "f1-micro"
+
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-9"
+    }
+  }
+
+  network_interface {
+    # A default network is created for all GCP projects
+    network       = "${google_compute_network.vpc_network.self_link}"
+    access_config {
+    }
+  }
+}
+
+resource "google_compute_network" "vpc_network" {
+  name                    = "terraform-network"
+  auto_create_subnetworks = "true"
+}
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>..terraform commands ------->>>>>>>>>>>>>>>>>>>>>>>>>>>>>.
+
+1. terraform init
+2. terraform plan (to see the changes without install)
+3. terraform apply
+4. terraform destroy
+
+
+1: (+ sign): Resource going to be created
+2: (- sign): Resources going to be deleted
+3: (~ sign): Resource going to be modified
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>.instance with ssh, firewal>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+provider "google" {
+  project = "practice-263517"
+  region  = "us-central1"
+  zone    = "us-central1-c"
+}
+ 
+resource "random_id" "instance_id" {
+byte_length = 8
+}
+ 
+resource "google_compute_instance" "nucuta" {
+name         = "nucuta-vm-${random_id.instance_id.hex}"
+machine_type = "f1-micro"
+zone         = "asia-south1-a"
+ 
+boot_disk {
+initialize_params {
+image = "ubuntu-os-cloud/ubuntu-1604-lts"
+}
+}
+ 
+metadata_startup_script = "sudo apt-get -y update; sudo apt-get -y dist-upgrade ;
+sudo apt-get -y install nginx"
+ 
+network_interface {
+network = "default"
+ 
+access_config {
+ 
+}
+}
+ 
+metadata {
+sshKeys = "dilanga:${file("dilanga.pub")}"
+}
+}
+ 
+resource "google_compute_firewall" "default" {
+name    = "nginx-firewall"
+network = "default"
+ 
+allow {
+protocol = "tcp"
+ports    = ["80","443"]
+}
+ 
+allow {
+protocol = "icmp"
+}
+}
+ 
+output "ip" {
+value = "${google_compute_instance.nucuta.network_interface.0.access_config.0.nat_ip}"
+}
+
+
+
+=========================================why will use terraform ================================
+https://blog.gruntwork.io/why-we-use-terraform-and-not-chef-puppet-ansible-saltstack-or-cloudformation-7989dad2865c

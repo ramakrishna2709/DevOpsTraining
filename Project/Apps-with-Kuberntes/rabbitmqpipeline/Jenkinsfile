@@ -1,0 +1,98 @@
+node(env.JenkinsSlaveNode) {
+	def gimageName = env.JOB_NAME.tokenize( '_' )[1]
+	def envName = env.JOB_NAME.tokenize( '_' )[0]
+	String namespace = envName
+	def pipelineBranch = env.pipelinebname
+	env.gimageName = "$gimageName"
+	env.envName = "$envName"
+	currentBuild.result = "SUCCESS"
+
+	//Setting up namespace variable
+    if (env.envName.equals("uat") || env.envName.equals("prod")){
+        namespace = "default"
+    }
+	
+    env.namespace = "$namespace"
+    println namespace
+
+	try {
+	   stage('Checkout'){
+			sh "env"
+			checkout([$class: 'GitSCM', branches: [[name: "*/$pipelineBranch"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: 'https://bitbucket.org/academysports/devops-cd-pipeline.git']]])
+	   }
+
+	   stage('Reading Properties'){
+                //Reading properties
+                def content = readFile "properties/${envName}.properties"
+
+                Properties properties = new Properties()
+                InputStream is = new ByteArrayInputStream(content.getBytes());
+                properties.load(is)
+                //Setting up env variables
+                env.serviceAccount = properties."${envName}.${gimageName}.serviceAccount"
+	   }
+
+	   if(currentBuild.result=='SUCCESS')
+		{
+			stage('Deploying to Kubernetes'){
+				sh '''
+				    cd ${WORKSPACE}/rabbitmqpipeline/kube
+					sleep 20s
+					serviceName='rabbitmq'
+					serviceType='deployment'					
+					export PATH=$HOME/google-cloud-sdk/bin:$PATH
+					if [ ! -z ${serviceName} ] && [ ! -z ${serviceType} ]
+					then
+						if [ $( kubectl get ServiceAccount -n $namespace | grep -c "rabbitmq${namespace}svc" ) -eq 0 ]
+						then
+							sed -i "s/NAMESPACE/$namespace/g" rabbitmq_serviceaccount.yaml
+							kubectl create -f rabbitmq_serviceaccount.yaml --save-config
+						else
+							sed -i "s/NAMESPACE/$namespace/g" rabbitmq_serviceaccount.yaml
+							kubectl apply -f rabbitmq_serviceaccount.yaml
+						fi
+						if [ $( kubectl get clusterrolebinding -n $namespace | grep -c "cluster-admin-binding-${namespace}" ) -eq 0 ]
+						then
+							sed -i "s/NAMESPACE/$namespace/g" rabbitmq_clsrole.yaml
+							sed -i "s/SERVICEACCOUNT/$serviceAccount/g" rabbitmq_clsrole.yaml
+							kubectl create -f rabbitmq_clsrole.yaml --save-config
+						else
+							sed -i "s/NAMESPACE/$namespace/g" rabbitmq_clsrole.yaml
+							sed -i "s/SERVICEACCOUNT/$serviceAccount/g" rabbitmq_clsrole.yaml
+							kubectl apply -f rabbitmq_clsrole.yaml
+						fi
+						if [ $( kubectl get Role -n $namespace | grep -c "${namespace}-endpoint-reader" ) -eq 0 ]
+						then
+							sed -i "s/NAMESPACE/$namespace/g" rabbitmq_role.yaml
+							kubectl create -f rabbitmq_role.yaml --save-config
+						else
+							sed -i "s/NAMESPACE/$namespace/g" rabbitmq_role.yaml
+							kubectl apply -f rabbitmq_role.yaml
+						fi
+						if [ $( kubectl get RoleBinding -n $namespace | grep -c "${namespace}-endpoint-reader" ) -eq 0 ]
+						then
+							sed -i "s/NAMESPACE/$namespace/g" rabbitmq_rolebinding.yaml
+							kubectl create -f rabbitmq_rolebinding.yaml --save-config
+						else
+							sed -i "s/NAMESPACE/$namespace/g" rabbitmq_rolebinding.yaml
+							kubectl apply -f rabbitmq_rolebinding.yaml
+						fi
+						if [ $( echo -e ${serviceType} | grep -c deployment ) -eq 1 ] && [ $( kubectl get service -n $namespace | grep -c ${serviceName} ) -eq 0 ]
+						then
+							sed -i "s/NAMESPACE/$namespace/g" rabbitmq_statefulsets.yaml
+							kubectl create -f rabbitmq_statefulsets.yaml --save-config
+						else
+							sed -i "s/NAMESPACE/$namespace/g" rabbitmq_statefulsets.yaml
+							kubectl apply -f rabbitmq_statefulsets.yaml
+						fi
+					fi
+				'''
+			}
+		}
+	}
+	catch (err) {
+        currentBuild.result = "FAILURE"
+            step([$class: 'Mailer', notifyEveryUnstableBuild: true, recipients: 'hkhan2@sapient.com mramanathan@sapient.com', sendToIndividuals: false])
+        throw err
+    }
+}

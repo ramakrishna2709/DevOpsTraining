@@ -1,0 +1,137 @@
+==================Workspaces=======================
+ Infrastructure management is to build multiple environments, such as testing and production,
+ with mostly the same setup but keeping a few variables different, like networking and sizing.
+==================
+The first tool help us with that is terraform workspaces. Previously called environments,
+ it allows you to create different and independent states on the same configuration.
+ And as it’s compatible with remote backend this workspaces are shared with your team.
+ 
+========================
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>.ways of managing infrastructure in multiple environments using Terraform.
+=============Strategy 1: Create separate directories for every environment
+This one is a no-brainer. Just create separate folders for every environment and repeat the configuration for dev, test, and prod. A typical tree looks like this:
+======================enviornments
+
+
+|-- environments
+|   |-- dev
+|   |   |-- main.tf
+|   |   |-- outputs.tf
+|   |   |-- terraform.tfvars
+|   |   |-- variables.tf
+|   |   `-- versions.tf
+|   |-- prod
+|   |   |-- main.tf
+|   |   |-- outputs.tf
+|   |   |-- terraform.tfvars
+|   |   |-- variables.tf
+|   |   `-- versions.tf
+|   `-- test
+|       |-- main.tf
+|       |-- outputs.tf
+|       |-- terraform.tfvars
+|       |-- variables.tf
+|       `-- versions.tf
+`-- modules
+    |-- compute
+    |   |-- main.tf
+    |   |-- outputs.tf
+    |   |-- userdata.tpl
+    |   |-- variables.tf
+    |   `-- versions.tf
+    |-- networking
+    |   |-- main.tf
+    |   |-- outputs.tf
+    |   |-- variables.tf
+    |   `-- versions.tf
+    `-- storage
+        |-- main.tf
+        |-- outputs.tf
+        |-- terraform.tfstate
+        |-- terraform.tfstate.backup
+        |-- tfplan
+        `-- variables.tf
+		
+=================concerns:
+
+Well, this might look like a sensible approach to start with, but there are a few concerns:
+We now have to maintain three copies of the same configuration.
+The configuration isn’t CI-/CD-friendly, as human intervention is needed to promote the code to the higher environments.
+
+===================================Strategy 2: Use workspaces
+As you might have found out by now, the only difference between these environments would be the values of variables and the state file.
+
+We have two requirements:
+
+There should be a way of dynamically specifying separate variables for every environment.
+There should be a way to manage separate states for each environment.
+
+Terraform provides a way to achieve just this using workspaces.
+
+>>>>>>>>>>>>>Workspaces in Terraform are simply independently managed state files.
+>>>>>>>>>Terraform uses workspaces by default, and if you don’t declare a workspace, you are still working on a default workspace.
+>>>>>>>>>>>>>>When you create a workspace and apply your Terraform configuration there, Terraform creates a directory called terraform.tfstate.d. 
+Within that, it creates a subdirectory for every workspace.
+ The subdirectories contain individual state files for the particular workspace, as shown in the example below:
+ 
+ 
+|-- main.tf
+|-- outputs.tf
+|-- terraform.tfstate.d
+|   |-- dev
+|   |   `-- terraform.tfstate
+|   `-- prod
+|       `-- terraform.tfstate
+|-- terraform.tfvars
+    dev.tfvars
+	qa.tfvars
+|-- tfdev_plan
+|-- tfprod_plan
+|-- variables.tf
+`-- versions.tf
+
+terraform apply --var-file dev.tfvars
+
+
+testing-2020
+  dev
+     terraform.tfstate
+	 
+  prod
+     terraform.tfstate  
+=========================terraform workspace commnds
+
+terraform workspace list
+terraform workspace new dev
+terraform workspace select dev
+terraform workspace delete dev
+
+===================create
+
+>>>>>>>>>>>>>>>>>>>Deployment to the Dev Environment
+Let’s start with our first deployment to the dev environment.
+Create a new workspace called dev:
+
+terraform workspace new dev
+
+Plan your Terraform deployment with env=dev
+
+>>>>>>>>>>>terraform plan -out=tfdev_plan -var 'env=dev'
+terraform apply "tfdev_plan"
+>>>>>>>>>>>>terraform apply -var 'env=dev'
+
+>>>>>>>>>>>>>>>>>>>>>Deployment to the Prod Environment
+Now, let’s repeat the same for the prod environment.
+Create a new workspace called prod:
+$ terraform workspace new prod
+
+>>>>>>>>>>>terraform plan -out=tfprod_plan -var 'env=prod'
+terraform apply "tfprod_plan"
+
+
+==========================destroy
+ terraform destroy -var 'env=dev'
+  terraform destroy -var 'env=prod'
+terraform apply "tfprod_plan"
+>>>>>>>>>>>>terraform apply -var 'env=prod'

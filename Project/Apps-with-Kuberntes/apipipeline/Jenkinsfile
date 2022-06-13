@@ -1,0 +1,508 @@
+node(env.JenkinsSlaveNode){
+    //Setting up variables to be used in pipeline
+    def checkoutBranch = env.GIT_BRANCH
+	def gimageName = env.JOB_NAME.tokenize( '_' )[1]
+	def envName = env.JOB_NAME.tokenize( '_' )[0]
+    String namespace = envName
+	String repoName = ("https://bitbucket.org/academysports/" + env.repositoryName + ".git");
+    def d = new Date(currentBuild.startTimeInMillis) 
+    def tz = TimeZone.getTimeZone('CST') 
+	def revID = d.format("yyyyMMMdd'T'HHmmz", tz)
+	def pipelineRepo = 'https://bitbucket.org/academysports/devops-cd-pipeline.git'
+	def pipelineBranch = env.pipelinebname
+    def imageTagName = env.imageTagName
+	def buildmethod = env.BuildType
+    def regexPattern = ~/(?i)([a-z0-9]+-(\d)+-[a-z0-9]+-[a-z0-9-\.]+)/
+	env.buildmethod = "$buildmethod"
+	env.gimageName = "$gimageName"
+	env.imageTagName = "$imageTagName"
+	env.envName = "$envName"
+	env.revID = "$revID"
+	env.checkoutBranch = "$checkoutBranch"
+    env.regexPattern = "$regexPattern"
+	currentBuild.result = "SUCCESS"
+    
+    //Setting up namespace variable
+    if (env.envName.equals("uat") || env.envName.equals("prod")){
+        namespace = "default"
+    }
+	
+    env.namespace = "$namespace"
+    println namespace
+    
+    try{
+
+        //if(!gimagename.equals("apicommonframework") && !gimagename.equals("apiintegrationframework")){
+            stage('Reading Properties'){
+                checkout([$class: 'GitSCM', branches: [[name: "${pipelineBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: "${pipelineRepo}"]]])
+                //Reading properties
+                def content = readFile "properties/${envName}.properties"
+
+                Properties properties = new Properties()
+                InputStream is = new ByteArrayInputStream(content.getBytes());
+                properties.load(is)
+                //Setting up env variables
+                env.sonarUrl = properties."${envName}.sonarUrl"
+                env.kubeHome = properties."${envName}.apiKubeHome"
+                env.dockerHome = properties."${envName}.apiDockerHome"
+                env.timezoneCountry = properties."${envName}.timezoneCountry"
+                env.timezoneState = properties."${envName}.timezoneState"
+                env.logrootlevel = properties."${envName}.apilogrootlevel"
+                env.logapplicationlevel = properties."${envName}.apilogapplicationlevel"
+                env.deploymentStrategy = properties."${envName}.deploymentStrategy"
+                env.vCPUMax = properties."${envName}.${gimageName}.vCPUMax"
+                env.vMemoryMax = properties."${envName}.${gimageName}.vMemoryMax"
+                env.vCPUMin = properties."${envName}.${gimageName}.vCPUMin"
+                env.vMemoryMin = properties."${envName}.${gimageName}.vMemoryMin"
+                env.vCPUPercent = properties."${envName}.${gimageName}.vCPUPercent"
+                env.minReplicas = properties."${envName}.${gimageName}.minReplicas"
+                env.maxReplicas = properties."${envName}.${gimageName}.maxReplicas"
+                env.port = properties."${envName}.${gimageName}.port"
+                env.appPNumber = properties."${envName}.${gimageName}.appPNumber"
+                env.internalLB = properties."${envName}.${gimageName}.internalLB"
+                //env.heapXmx = properties."${envName}.${gimageName}.heapXmx"
+                //env.heapXmn = properties."${envName}.${gimageName}.heapXmn"
+                env.javaOpts = properties."${envName}.${gimageName}.javaOpts"
+                env.hostAliasIP = properties."${envName}.${gimageName}.hostAliasIP"
+                env.hostAliasName = properties."${envName}.${gimageName}.hostAliasName"
+                env.sonarExclusion = properties."${envName}.${gimageName}.sonarExclusion"
+                env.livenessProbe = properties."${envName}.${gimageName}.livenessProbe"
+                env.readinessProbeDelay = properties."${envName}.${gimageName}.readinessProbeDelay"
+                env.livenessProbeDelay = properties."${envName}.${gimageName}.livenessProbeDelay"
+                env.volumeName=properties."${envName}.${gimageName}.volumeName"
+                env.volumeSecretName=properties."${envName}.${gimageName}.volumeSecretName"
+                env.volumeMountPath=properties."${envName}.${gimageName}.volumeMountPath"
+                env.volumeMountName=properties."${envName}.${gimageName}.volumeMountName"
+
+                //Reading internal LB IP
+                if(internalLB.equals("True")){
+                    env.internalLBIP = properties."${envName}.${gimageName}.internalLBIP"
+                }
+
+                //Creating tag string
+                if(buildmethod.equals("Build Only") || buildmethod.equals("Build & Deploy")){
+                    //Checking the branch name against the regular expression
+                    //If checkoutbranch parameter value is an existing tag, extract the branch from it
+                    if(checkoutBranch ==~ regexPattern){
+                        def extractedBranchName = ExtractBranchName(checkoutBranch)
+                        env.tagName = "${envName}-${BUILD_NUMBER}-${revID}-${extractedBranchName}"
+                    }
+                    else{
+                        env.tagName = "${envName}-${BUILD_NUMBER}-${revID}-${checkoutBranch}"
+                    }
+                    
+                }
+                //Extract branch name from tag provided
+                else if(buildmethod.equals("Tag Only") || buildmethod.equals("Tag & Deploy")){
+                    def extractedBranchName = ExtractBranchName(imageTagName)
+                    env.tagName = "${envName}-${BUILD_NUMBER}-${revID}-${extractedBranchName}"
+                }
+                else{
+                    env.tagName = imageTagName
+                }
+                println tagName
+            }
+        //}
+
+        if( buildmethod.equals("Build Only") || buildmethod.equals("Build & Deploy")){
+
+            stage('Checkout'){
+                println "Inside Checkout stage"
+			    //Commenting out for testing purpose
+                //sh "env && echo -e $BUILD_ID"
+			    checkout([$class: 'GitSCM', branches: [[name: "${checkoutBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: "${repoName}"]]])
+	        }
+
+            stage('Build'){
+                println "Inside Build stage"
+                withEnv( ["PATH+MAVEN=${tool 'mvn-3.x.x'}/bin"] ) {
+                    //sh "mvn -version"   
+                    //Uncommented for actual testing
+                    sh "mvn clean install checkstyle:checkstyle findbugs:findbugs pmd:pmd pmd:cpd cobertura:cobertura -Dcobertura.report.format=xml -DskipTests=true" 
+                }
+		        
+	        }
+	        
+            //Remember to change the common framework names in actual runs - Changed for actual testing
+            //if(!gimagename.equals("apicommonframework") && !gimagename.equals("apiintegrationframework")){
+             try{
+                stage('UnitTest'){
+                    println "Inside UnitTest stage"
+                    withEnv( ["PATH+MAVEN=${tool 'mvn-3.x.x'}/bin"] ) {
+                    //sh "mvn -version"   
+                    //Uncommented for actual testing
+                    sh "mvn test -B" 
+                    }
+                    //Uncommented for actual testing
+                    step([$class: 'JUnitResultArchiver', testResults: '**/target/surefire-reports/TEST-*.xml'])
+                }
+            //}
+             }
+             catch (e) {
+				echo "Inside sonar catch"
+				echo e.toString()
+			}
+	        
+            //Remember to change the common framework names in actual runs - Changed for actual testing
+            //if(!gimagename.equals("apicommonframework") && !gimagename.equals("apiintegrationframework")){
+            try{ 
+               stage('Code Quality - Sonar'){
+                    println "Inside Sonar stage"
+                    println sonarUrl
+                    withEnv( ["PATH+MAVEN=${tool 'mvn-3.x.x'}/bin"] ) {
+                        //sh "mvn -version"
+                        //Uncommented for actual testing
+                        sh "mvn -e -B sonar:sonar -Dsonar.java.source=1.8 -Dsonar.surefire.reportsPath=target/surefire-reports -Dsonar.dynamicAnalysis=reuseReports -Dsonar.cobertura.reportPath=target/site/cobertura/coverage.xml -Dsonar.host.url=${sonarUrl} -Dsonar.login=754b09156c95e1d1b41a3d10830ea25b3f1a49b6 -Dsonar.sourceEncoding=UTF-8 -Dsonar.projectKey=$gimageName-${checkoutBranch} -Dsonar.cpd.cross_project=false -Dsonar.exclusions='${sonarExclusion}' -Dsonar.projectName=$gimageName-${checkoutBranch}"   
+                    }
+                    
+                }
+            //}
+            }
+             catch (e) {
+				echo "Inside sonar catch"
+				echo e.toString()
+			}
+            stage('Apply Tag'){
+                withCredentials([usernamePassword(credentialsId: 'ee9ee2a1-1610-4102-ab77-512fa52a8ed4', passwordVariable: 'bitbucketPass', usernameVariable: 'bitbucketUser')]) {
+					sh "echo $tagName"
+                    sh("git tag -a ${tagName} -m 'Tag for ${gimageName}'")
+                    sh("git push https://${bitbucketUser}:${bitbucketPass}@bitbucket.org/academysports/${repositoryName}.git --tags")
+                } 
+			}
+
+            
+            stage('Preparing for Nexus upload'){
+                def xmlFile = readFile "pom.xml"
+		        def project = new XmlSlurper().parseText(xmlFile)
+                def nexusartifactId = project.artifactId.text()
+                def versionFromPom = project.version.text()
+
+                def versionSubString = "${BUILD_NUMBER}-${checkoutBranch}"
+                if(checkoutBranch ==~ regexPattern){
+                    def extractedBranchName = ExtractBranchName(checkoutBranch)
+                    versionSubString = "${BUILD_NUMBER}-${extractedBranchName}"
+                }
+
+                if(versionFromPom.contains("SNAPSHOT")){
+                    env.nexusRepo = "maven-snapshots"
+                }
+                else{
+                    env.nexusRepo = "maven-releases"
+                }
+                env.versionSubString = "$versionSubString"
+                env.nexusartifactId = "$nexusartifactId"
+                env.version = "${versionSubString}-${versionFromPom}"
+                env.versionFromPom = "$versionFromPom"
+            }
+
+            //Moved this stage after Docker build stage
+            /*stage('Deploy to Nexus')
+			{
+			    println "[INFO] running deploy to nexus"
+                
+                //Uncommented for actual testing		 
+			    sh '''
+			   	    cd target	   
+				    for i in `find . -name "*jar"` 
+                    do
+				        #mv $i ` echo $i | sed "s/.jar$/-${BUILD_NUMBER}-${checkoutBranch}.jar/g" ` ;   #We don't need this
+                        #mv $i ` echo $i | sed "s/.jar$/-${versionSubString}.jar/g" ` ;
+                        mv $i ${nexusartifactId}-${versionSubString}-${versionFromPom}.jar ;
+                    done
+				    cd ..
+				'''             
+                //println "${nexusartifactId}"				
+			    filename = "target/${nexusartifactId}-${versionSubString}-${versionFromPom}.jar"
+				println "${filename}"
+				//Uncommented for actual testing
+                step([$class: 'NexusArtifactUploader', artifacts: [[artifactId: "${nexusartifactId}", classifier: '', file: "${filename}", type: 'jar']], credentialsId: '61abe64a-5f7a-48ba-b4c6-d1320934b315', groupId: 'com.academy', nexusUrl: '10.104.36.5', nexusVersion: 'nexus3', protocol: 'http', repository: "${nexusRepo}", version: "${version}"])	
+	        }*/
+
+            //No need to run this stage for common framework modules
+            //Remember to change the common framework names in actual runs - Changed for actual testing
+            if(!gimagename.equals("apicommonframework") && !gimagename.equals("apiintegrationframework")){
+                stage('Build Docker Image'){
+                checkout([$class: 'GitSCM', branches: [[name: "${pipelineBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: "${pipelineRepo}"]]])
+                sh '''
+                        cd ${WORKSPACE}
+                        imageName="us.gcr.io/just-slate-88918/${gimageName}:${tagName}"
+                        
+                        #Putting the values in placeholders
+                        sed -i "s/PORTNUMBER/$appPNumber/g" ${dockerHome}/Dockerfile
+					    sed -i "s/ARTIFACT/$nexusartifactId/g" ${dockerHome}/Dockerfile
+                        
+                        sudo docker build -t ${imageName} --pull=true --file=${dockerHome}/Dockerfile ${WORKSPACE}     #Uncommented for actual testing
+                        echo $imageName
+                    '''
+                    println dockerHome
+                }
+            }
+
+            //Moved this stage after docker build stage as this stage is changing name of the jar file
+            stage('Deploy to Nexus')
+			{
+			    println "[INFO] running deploy to nexus"
+                
+                //No need to rename the jar file		 
+			    /*sh '''
+			   	    cd target	   
+				    for i in `find . -name "*jar"` 
+                    do
+				        #mv $i ` echo $i | sed "s/.jar$/-${BUILD_NUMBER}-${checkoutBranch}.jar/g" ` ;   #We don't need this
+                        #mv $i ` echo $i | sed "s/.jar$/-${versionSubString}.jar/g" ` ;
+                        mv $i ${nexusartifactId}-${versionSubString}-${versionFromPom}.jar ;
+                    done
+				    cd ..
+				'''*/             
+                //println "${nexusartifactId}"				
+			    //filename = "target/${nexusartifactId}-${versionSubString}-${versionFromPom}.jar"
+                filename = "target/${nexusartifactId}-${versionFromPom}.jar"
+				println "${filename}"
+				//Uncommented for actual testing
+                step([$class: 'NexusArtifactUploader', artifacts: [[artifactId: "${nexusartifactId}", classifier: '', file: "${filename}", type: 'jar']], credentialsId: '61abe64a-5f7a-48ba-b4c6-d1320934b315', groupId: 'com.academy', nexusUrl: '10.104.36.5', nexusVersion: 'nexus3', protocol: 'http', repository: "${nexusRepo}", version: "${version}"])	
+	        }
+
+        }
+
+        if(buildmethod.equals("Tag Only") || buildmethod.equals("Tag & Deploy")){
+            stage('Retagging Docker Image'){
+		        sh '''
+                    imageOldName="us.gcr.io/just-slate-88918/${gimageName}:${imageTagName}"
+                    imageNewName="us.gcr.io/just-slate-88918/${gimageName}:${tagName}"
+                    sudo docker pull ${imageOldName}     #Uncommented for actual testing
+                    sudo docker tag ${imageOldName} ${imageNewName}    #Uncommented for actual testing
+                    echo $imageNewName
+			    '''
+	        }
+        }
+
+        //Run this stage for every build type except "Deploy Only"
+        if(!buildmethod.equals("Deploy Only")){
+            //No need to run this stage for common framework modules
+            //Remember to change the common framework names in actual runs - Changed for actual testing
+            if(!gimagename.equals("apicommonframework") && !gimagename.equals("apiintegrationframework")){
+                parallel 'Publish Docker Image':{
+		        sh '''
+                    sudo docker push us.gcr.io/just-slate-88918/${gimageName}:${tagName}     #Uncommented for actual testing
+                    echo "Image to push is - us.gcr.io/just-slate-88918/${gimageName}:${tagName}"
+			    '''
+	        }
+            } 
+        }
+
+        if( buildmethod.equals("Deploy Only") || buildmethod.equals("Build & Deploy") || buildmethod.equals("Tag & Deploy"))
+	    {
+	        if(currentBuild.result=='SUCCESS')
+		    {   
+                stage('Deploying to Kubernetes'){
+                    checkout([$class: 'GitSCM', branches: [[name: "${pipelineBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: "${pipelineRepo}"]]])
+                    sh '''
+                        sleep 2m    #Uncommented for actual testing
+                        serviceName=${gimageName}
+                        deploymentType='deployment'
+                        serviceType='service'
+
+                        #Checking whether service needs internal LB
+                        if [ "${internalLB}" == "True" ]
+                        then
+                            serviceType='service-internalLB'
+                        fi
+                        
+                        #newTag=$( echo -e $imageUATTagName | sed 's/beta/stable/g' | sed 's/uat/prod/g' )   #We have changed the logic
+                        #tagName="${newTag}"
+                        
+                        ##We Don't need it
+                        ##If the method is "Deploy Only", use the image tag from dropdown
+                        #if [ "${buildmethod}" == "Deploy Only" ];
+					    #then
+						#    tagName="${imageTagName}"
+					    #else
+						#    tagName="${envName}-${BUILD_NUMBER}-${revID}-${checkoutBranch}"
+					    #fi
+
+                        upperEnvName=$( echo -e $envName | awk -F "-" '{print $1}' | tr '[:lower:]' '[:upper:]' )
+                        kubernetesFileLocation=${kubeHome}					
+                        export PATH=$HOME/google-cloud-sdk/bin:$PATH
+                        if [ ! -z ${serviceName} ] && [ ! -z ${serviceType} ]
+                        then
+                            cd ${kubernetesFileLocation}
+
+                            #Creating deployment.yml from different parts
+                            if [ -f ${deploymentType}.yml ]
+                            then
+                                rm -rf ${deploymentType}.yml
+                            fi
+
+                            ##Appending first part
+                            cat deployment-Part1.yml >> ${deploymentType}.yml
+                            echo "" >> ${deploymentType}.yml    #For adding new line
+
+                            ##Appending environment variables part
+                            cat ${deploymentType}-PartEnvVars.yml >> ${deploymentType}.yml
+                            echo "" >> ${deploymentType}.yml    #For adding new line
+
+                            ##Appending environment variables part for specific api    
+                            if [ -f ${deploymentType}-PartEnvVars-${serviceName}.yml ]
+                            then
+                                cat ${deploymentType}-PartEnvVars-${serviceName}.yml >> ${deploymentType}.yml
+                                echo "" >> ${deploymentType}.yml  #For adding new line
+                            fi
+                            
+                            ##Appending third part
+                            cat deployment-Part3.yml >> ${deploymentType}.yml
+                            echo "" >> ${deploymentType}.yml   #For adding new line
+
+                            ##Appending liveness probe part
+                            if [ ${livenessProbe} == "True" ]
+                            then
+                                cat deployment-PartLivenessProbe.yml >> ${deploymentType}.yml
+                                echo "" >> ${deploymentType}.yml    #For adding new line
+                            fi
+
+                            ##Appending volume mount part
+                            if [ $volumeMountPath != 'null' ] && [ $volumeMountName != 'null' ] && [ ! -z $volumeMountPath ] && [ ! -z $volumeMountName ]
+                            then
+                                cat deployment-PartVolumeMount.yml >> ${deploymentType}.yml
+                                echo "" >> ${deploymentType}.yml    #For adding new line
+                            fi
+
+                            ##Appending host aliases part
+                            cat deployment-PartHostAliases.yml >> ${deploymentType}.yml
+                            echo "" >> ${deploymentType}.yml    #For adding new line
+                            
+                            ##Appending volume of type secret part
+                            if [ $volumeName != 'null' ] && [ $volumeSecretName != 'null' ] && [ ! -z $volumeName ] && [ ! -z $volumeSecretName ]
+                            then
+                                cat deployment-PartVolumeSecret.yml >> ${deploymentType}.yml
+                                echo "" >> ${deploymentType}.yml    #For adding new line
+                           fi
+
+                            ##Appending deployment startegy part
+                            if [ ${deploymentStrategy} == "Rolling" ]
+                            then
+                                cat deployment-PartDeploymentStrategyRolling.yml >> ${deploymentType}.yml
+                                echo "" >> ${deploymentType}.yml    #For adding new line
+                            else
+                                cat deployment-PartDeploymentStrategyRecreate.yml >> ${deploymentType}.yml
+                                echo "" >> ${deploymentType}.yml    #For adding new line
+                            fi
+
+                            #Putting values in placeholders in deployment.yml file
+                            sed -i "s/BUILDVERSION/$tagName/g" ${deploymentType}".yml"
+                            sed -i "s/APPLICATIONNAME/$gimageName/g" ${deploymentType}".yml"
+                            sed -i "s/ENVIRONMENTNAMEUPPER/$upperEnvName/g" ${deploymentType}".yml"
+                            sed -i "s/ENVIRONMENTNAME/$envName/g" ${deploymentType}".yml"
+                            sed -i "s/VCPUMAX/$vCPUMax/g" ${deploymentType}".yml"
+                            sed -i "s/VMEMORYMAX/$vMemoryMax/g" ${deploymentType}".yml"
+                            sed -i "s/VCPUMIN/$vCPUMin/g" ${deploymentType}".yml"
+                            sed -i "s/VMEMORYMIN/$vMemoryMin/g" ${deploymentType}".yml"
+                            sed -i "s/APPPNUMBER/$appPNumber/g" ${deploymentType}".yml"
+                            #sed -i "s/HEAPXMX/$heapXmx/g" ${deploymentType}".yml"
+                            #sed -i "s/HEAPXMN/$heapXmn/g" ${deploymentType}".yml"
+                            sed -i "s/NAMESPACE/$namespace/g" ${deploymentType}".yml"
+                            sed -i "s/JAVAOPTS/$javaOpts/g" ${deploymentType}".yml"
+                            sed -i "s/HOSTALIASIP/$hostAliasIP/g" ${deploymentType}".yml"
+                            sed -i "s/HOSTALIASNAME/$hostAliasName/g" ${deploymentType}".yml"
+                            sed -i "s/READINESSPROBEDELAY/$readinessProbeDelay/g" ${deploymentType}".yml"
+                            sed -i "s/LIVENESSPROBEDELAY/$livenessProbeDelay/g" ${deploymentType}".yml"
+                            sed -i "s/COUNTRY/$timezoneCountry/g" ${deploymentType}".yml"
+                            sed -i "s/STATE/$timezoneState/g" ${deploymentType}".yml"
+                            sed -i "s/LOGROOTLEVEL/$logrootlevel/g" ${deploymentType}".yml"
+                            sed -i "s/LOGAPPLICATIONLEVEL/$logapplicationlevel/g" ${deploymentType}".yml"
+                            sed -i "s/VOLUMENAME/$volumeName/g" ${deploymentType}".yml"
+                            sed -i "s/VOLUMESECRETNAME/$volumeSecretName/g" ${deploymentType}".yml"
+                            sed -i "s/VOLUMEMOUNTPATH/$volumeMountPath/g" ${deploymentType}".yml"
+                            sed -i "s/VOLUMEMOUNTNAME/$volumeMountName/g" ${deploymentType}".yml"
+
+                            #Check deployment already exists or not
+                            if [ $( kubectl get ${deploymentType} -n $namespace | grep -c ${serviceName} ) -ge 1 ]
+                            then
+                                kubectl apply -f $( echo -e ${deploymentType}".yml" )   ##Uncommented for actual testing
+                                echo "Update deployment"
+                            else
+                                kubectl create --save-config -f $( echo -e ${deploymentType}".yml" )   ##Uncommented for actual testing
+                                echo "Create deployment"
+                            fi
+
+                            #Putting values in placeholders in hpa.yml
+                            sed -i "s/minHPA/$minReplicas/g" "hpa.yml"
+                            sed -i "s/maxHPA/$maxReplicas/g" "hpa.yml"
+                            sed -i "s/VCPUPERCENT/$vCPUPercent/g" "hpa.yml"																
+                            sed -i "s/APPLICATIONNAME/$gimageName/g" "hpa.yml"
+                            sed -i "s/NAMESPACE/$namespace/g" "hpa.yml"
+
+                            #Check HPA already exists or not
+                            if [ $( kubectl get hpa -n $namespace | grep -c ${serviceName} ) -ge 1 ]
+                            then
+                                kubectl apply -f hpa.yml   ##Uncommented for actual testing
+                                echo "Update HPA"
+                            else
+                                kubectl create -f hpa.yml --save-config   ##Uncommented for actual testing
+                                echo "Create HPA"
+                            fi
+
+                            #Putting values in placeholders in sevice.yml or internalLB.yml
+                            sed -i "s/APPLICATIONNAME/$gimageName/g" ${serviceType}".yml"
+                            sed -i "s/ENVIRONMENTNAMEUPPER/$upperEnvName/g" ${serviceType}".yml"
+                            sed -i "s/ENVIRONMENTNAME/$envName/g" ${serviceType}".yml"
+                            sed -i "s/PORT/$port/g" ${serviceType}".yml"
+                            sed -i "s/APPPNUMBER/$appPNumber/g" ${serviceType}".yml"
+                            sed -i "s/NAMESPACE/$namespace/g" ${serviceType}".yml"
+
+                            #Putting internal LB IP
+                            if [ $internalLB == 'True' ]
+                            then
+                                sed -i "s/INTERNALLBIP/$internalLBIP/g" ${serviceType}".yml"
+                            fi
+                            
+                            #Check service already exists or not
+                            if [ $( kubectl get service -n $namespace | grep -c ${serviceName} ) -ge 1 ]
+                            then
+                                kubectl apply -f $( echo -e ${serviceType}".yml" )   ##Uncommented for actual testing
+                                echo "Update service"
+                            else
+                                kubectl create --save-config -f $( echo -e ${serviceType}".yml" )   ##Uncommented for actual testing
+                                echo "Create service"
+                            fi
+                        fi
+                        #Printing just for testing purpose
+                        cat deployment.yml
+                        cat service.yml
+                        cat hpa.yml
+                        cat service-internalLB.yml
+                    '''
+                }
+		    }
+		}
+    }
+    catch(err){
+        currentBuild.result = "FAILURE"
+        //emailext body: '''${SCRIPT, template="groovy-html.template"}''', subject: '$PROJECT_NAME - Build # $BUILD_NUMBER - $BUILD_STATUS!', to: 'ACADEMY_DEVOPS_PBS_TEAM_IND@groups.publicisgroupe.net,AcademyArchs@sapient.com'
+        throw err
+    }
+    finally{
+        /*if(currentBuild.result!='FAILURE')
+		{
+			sleep 120
+			parallel 'Performance-tests':{
+			    build job: 'Gatling', wait: false
+			}, 'Functional-Test':{
+			    build job: 'Automation', wait: false
+			}
+		}*/
+    }
+}
+
+//Function to extract branch name from tag string
+def ExtractBranchName(sourceString) {
+    def extractedBranchName = ''
+    def n = 3
+    def pos = sourceString.indexOf("-")
+                
+    //This is to take out the branch name from existing tag
+    while (--n > 0 && pos != -1){
+        pos = sourceString.indexOf("-", pos + 1)
+    }
+    extractedBranchName = sourceString.substring(pos + 1)
+    return extractedBranchName
+}

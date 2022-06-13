@@ -1,0 +1,19 @@
+---
+- hosts: all
+  become: yes
+  become_method: sudo
+  remote_user: devops_practiceworks2019
+
+  tasks:
+    - name: Make sure that we can connect to the machine
+      ping:
+
+    - name: Deploy package
+      #get_url: 
+      copy:
+        #url: https://tomcat.apache.org/tomcat-7.0-doc/appdev/sample/sample.war 
+        src: ../target/vprofile-v1.war
+        dest: /opt/tomcat/webapps/vprofile-v1.war 
+        owner: tomcat 
+        group: tomcat 
+        mode: 0755

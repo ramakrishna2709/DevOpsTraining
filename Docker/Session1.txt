@@ -1,0 +1,37 @@
+docker pull tomcat:latest
+
+docker pull tomcat:9-jdk13-openjdk-oracle
+
+
+docker pull python
+
+docker pull python:123
+
+Dockerfile---------------------------------
+
+FROM This must be the first instruction in the Dockerfileand identifies the image to inherit from
+MAINTAINER Provides visibility and credit to the author of the image
+RUN Executes a Linux command for configuring and installing
+ENTRYPOINT The final script or application used to bootstrap the container, making it an executable application
+CMD Provide default arguments to the ENTRYPOINT using a JSON array format 
+LABEL Name/value metadata about the image
+ENV Sets environment variables
+ARG 
+COPY Copies files into the container
+ADD Alternative to copy
+WORKDIR Sets working directory for RUN, CMD,
+ENTRYPOINT, COPY, and/or ADD instructions
+EXPOSE Ports the container will listen on
+VOLUME Creates a mount point
+USER User to run RUN, CMD, and/or ENTRYPOINT
+
+
+Dockerfile
+
+
+docker run -it httpd --env test=hello
+
+docker build -t apache .
+docker buiild -t apache -f Dockerfile
+docker buiild -t apache test
+

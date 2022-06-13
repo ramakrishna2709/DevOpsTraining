@@ -1,0 +1,29 @@
+=================jenkins installation===========centos/rhel
+1. install java
+sudo yum install java-1.8.0-openjdk-devel
+curl --silent --location http://pkg.jenkins-ci.org/redhat-stable/jenkins.repo | sudo tee /etc/yum.repos.d/jenkins.repo
+sudo rpm --import https://jenkins-ci.org/redhat/jenkins-ci.org.key
+sudo yum install jenkins
+sudo systemctl start jenkins
+systemctl status jenkins
+sudo systemctl enable jenkins
+##########(enable the Jenkins service to start on system boot)
+
+############firewall port allow ################
+sudo firewall-cmd --permanent --zone=public --add-port=8080/tcp
+sudo firewall-cmd --reload
+
+#############start jenkins with IP####################
+http://your_ip_or_domain:8080
+
+
+
+====================linux============================
+
+wget -q -O - https://pkg.jenkins.io/debian/jenkins.io.key | sudo apt-key add -
+sudo sh -c 'echo deb https://pkg.jenkins.io/debian-stable binary/ > /etc/apt/sources.list.d/jenkins.list'
+sudo apt-get update
+sudo apt-get install jenkins
+
+
+

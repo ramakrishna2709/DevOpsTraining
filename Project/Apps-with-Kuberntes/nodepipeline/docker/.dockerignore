@@ -1,0 +1,24 @@
+#Ignoring all zip files
+*.zip
+
+#Ignoring provision folder
+provision
+
+#Ignoring Jenkinsfile
+Jenkinsfile
+
+#Ignoring .git folder and .gitignore files
+.git*
+
+#Ignoring Coverage report 
+coverage
+reports
+coverage.lcov
+
+#Ignoring Misc repostory files
+Makefile
+README.md
+sonar-project.properties
+pipeline@tmp
+node@tmp
+pipeline

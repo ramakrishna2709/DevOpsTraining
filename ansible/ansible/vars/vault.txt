@@ -1,0 +1,157 @@
+#############A typical Ansible setup will involve needing some sort of secret to fully setup a server or application. Common types of "secret" include passwords, SSH keys, SSL certificates, API tokens and anything else you don't want the public to see.
+
+Since it's common to store Ansible configurations in version control, we need a way to store secrets securely.
+
+Ansible Vault is the answer to this. Ansible Vault can encrypt anything inside of a YAML file, using a password of your choice.
+
+############################Using Ansible Vault
+A typical use of Ansible Vault is to encrypt variable files. Vault can encrypt any YAML file, but the most common files to encrypt are:
+
+Files within the group_vars directory
+A role's defaults/main.yml file
+A role's vars/main.yml file
+Any other file used to store variables.
+Let's see how to to use Ansible Vault with some variable files.
+
+Encrypting an Existing File
+The typical use case is to have a normal, plaintext variable file that we want to encrypt. Using ansible-vault, we can encrypt this and define the password needed to later decrypt it:
+
+######################## Encrypt a role's defaults/main.yml file
+ansible-vault encrypt defaults/main.yml
+
+> New Vault password: 
+> Confirm New Vault password: 
+> Encryption successful
+The ansible-vault command will prompt you for a password twice (a second time to confirm the first). Once that's done, the file will be encrypted! If you edit the file directly, you'll just see encrypted text. It looks something like this:
+
+$ANSIBLE_VAULT;1.1;AES256
+65326233363731663631646134306563353236653338646433343838373437373430376464616339
+3333383233373465353131323237636538363361316431380a643336643862663739623631616530
+35356361626434653066316661373863313362396162646365343166646231653165303431636139
+6230366164363138340a356631633930323032653466626531383261613539633365366631623238
+32396637623866633135363231346664303730353230623439633666386662346432363164393438
+33653666373064326233373337383934316335303862313838383966623134646230346330303136
+66333232363062303837333533303130386238323165623632346239383538343437663437373730
+35666532333065383439
+########################################3Creating an Encrypted File
+If you are creating a new file instead of encrypting an existing one, you can use the create command:
+
+ansible-vault create defaults/extra.yml
+> New Vault password: 
+> Confirm New Vault password:
+
+####################################Editing a File
+Once you encrypt a file, you can only edit the file by using ansible-vault again (unless there's an editor out there that can integrate with Vault to let you edit in the IDE?!). Here's how to edit that file after it's been encrypted:
+
+ansible-vault edit defaults/main.yml
+> Vault password: 
+This will ask for the password used to encrypt the file.
+
+You'll lose your data if you lose your password!
+
+Since we're running these commands in the CLI, this will open the file in a terminal-based app. This usually means your default editor as defined the EDITOR environment variable, if that is set:
+
+echo $EDITOR
+> vim
+My EDITOR environment variable isn't set, but my default is Vim. To use Nano instead of Vim, you can set that variable while running Vault:
+
+EDITOR=nano ansible-vault edit defaults/main.yml
+######################################3Decrypting a File
+You can decrypt a file to get it back to plaintext as well:
+
+ansible-vault decrypt defaults/main.yml
+> Vault password:
+###############################3Encrypting Specific Variables
+You don't have to encrypt a whole file! This is nice to track changes better in git, where you don't have an entire file changing for just a small change (even just opening an encrypted file will change the encrypted hash).
+
+The most basic use case is to just run it interactively on the CLI to get the properly formatted YAML as output:
+
+ansible-vault encrypt_string
+> New Vault password: 
+> Confirm New Vault password: 
+> Reading plaintext input from stdin. (ctrl-d to end input)
+> this is a plaintext string
+> !vault |
+>           $ANSIBLE_VAULT;1.1;AES256
+>           39393766663761653337386436636466396531353261383237613531356531343930663133623839
+>           3436613834303264613038623432303837393261663233640a363633343337623065613166306363
+>           37336132363462386138343535346264333061656134636631326164643035313433393831616131
+>           3635613565373939310a316132313764356432333366396533663965333162336538663432323334
+>           33656365303733303664353961363563313236396262313739343461383036333561
+> Encryption successful
+That string could be used in a variable file like so (as variable some_string):
+
+---
+some_string: !vault |
+    $ANSIBLE_VAULT;1.1;AES256
+    39393766663761653337386436636466396531353261383237613531356531343930663133623839
+    3436613834303264613038623432303837393261663233640a363633343337623065613166306363
+    37336132363462386138343535346264333061656134636631326164643035313433393831616131
+    3635613565373939310a316132313764356432333366396533663965333162336538663432323334
+    33656365303733303664353961363563313236396262313739343461383036333561
+You can do this in one line also:
+
+###########################ansible-vault encrypt_string 'this is a plaintext string' --name 'some_string'
+> New Vault password:
+> Confirm New Vault password: 
+> some_string: !vault |
+>           $ANSIBLE_VAULT;1.1;AES256
+>           34396232643133323034666335313939633865356534303064396238643939343337626330666164
+>           6231303061373666326264386538666564373762663332310a323938626239363763343638353264
+>           64646266663361386633386331656163353438623033626633366664303536396136353834336364
+>           6363303532303265640a396264616562663963653034376462613035383333373437653362616566
+>           3531
+> Encryption successful
+The output can be copied/pasted or appended into an existing YAML file!
+
+Running Ansible with Encrypted Variables
+If your roles or playbooks reference encrypted variables, you need to have give Ansible the password to decrypt them. You can do this in two ways:
+
+#######################Ask for Vault Password
+
+Have Ansible ask for the vault password as a prompt:
+
+ansible-playbook --ask-vault-pass -i inventory_file some_playabook.yml
+Using the --ask-vault-pass flag will instruct Ansible to ask for the vault password so it can decrypt the variable files correctly.
+
+####################3Use a Vault File
+
+Another handy thing you can do is store a vault password in a file and use that. This is handy for automation.
+
+To do so, first create a file with a password:
+
+echo "secret_password" > vault_password
+Then you can reference that file with the --vault-password-file flag. This flag can be used with any ansible-playbook or ansible-vault command to pre-define the password, so you do not get a prompt:
+
+# When creating/editing/encrypting/decrypting/rekeying a file:
+ansible-vault --vault-password-file=vault_password create defaults/foo.yml
+ansible-vault --vault-password-file=vault_password edit defaults/foo.yml
+
+# When running ansible playbooks
+ansible-playbook --vault-password-file=vault_password -i inventory_file some_playabook.yml
+Ansible 2.4+ and vault-id
+For Ansible 2.4+, ansible-vault works a little differently, using the --vault-id flag. The advantage of vault-id is that you can pass in multiple vault passwords or password files, in case you have files encrypted with different passwords.
+
+This expects to use a file. Here we see editing a file using --vault-id:
+
+ansible-vault --vault-id ./vault_password_file edit defaults/main.yml
+You can define multiple Vault ID's per command, allowing you to use multiple encrypted files that may have different passwords.
+
+############You can also ask it to prompt you:
+
+ansible-vault --vault-id @prompt edit defaults/main.yml
+Gotchas
+There are only a few gotchas to really worry about:
+
+If you lose your password, you lose your data. One common way to make this more manageable is to use a shared password manager
+If you're tracking your Ansible roles in git, you'll notice that even opening an encrypted file (and not changing it) will change the file; Merely opening a file means a new git commit. This is an annoying result of how the encryption is done when opening (decrypting) and closing (re-encrypting) a file for editing.
+This can be mitigated by encrypting only specific variables within a file as shown above
+
+
+
+
+#################################################################################################################################################################
+
+Reference #################################33
+
+https://www.digitalocean.com/community/tutorials/how-to-use-vault-to-protect-sensitive-ansible-data-on-ubuntu-16-04

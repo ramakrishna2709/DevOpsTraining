@@ -1,0 +1,148 @@
+pipeline {
+    agent any 
+    
+    environment {
+        checkoutBranch = "master"
+        repoName = "https://github.com/xxxx/devops-practice.git"
+        
+        nexusartifactId = "vprofile"
+        version = "2.0" 
+        nexusRepo = "maven-releases/"
+        filename = "target/vprofile-v1.war"
+        registry = "xxxx/docker-test"
+        registryCredential = 'docker-login'
+    }
+    
+   tools {
+     maven 'MAVEN_HOME'
+    }
+    
+    
+    stages{
+      
+      stage('Checkout'){
+              steps{
+                 println "inside the checkout stage"
+                 checkout([$class: 'GitSCM', branches: [[name: "${checkoutBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'git-server', url: "${repoName}"]]])
+          }
+      }
+
+      stage('Build'){
+              
+           steps{
+              println "inside the build stage"
+              sh "mvn clean package"
+              
+          }
+      } 
+
+      stage('UnitTest'){
+          steps{
+              println "inside the UnitTest"
+              sh "mvn test -B" 
+              
+              step([$class: 'JUnitResultArchiver', testResults: '**/target/surefire-reports/*.xml'])
+      }
+      }
+
+     stage('Apply Tag'){
+          steps{
+              println "inside the Apply tag stage"
+              withCredentials([usernamePassword(credentialsId: 'git-server', passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
+                  sh("git tag -a ${BUILD_NUMBER} -m 'Tag for version3.0'")
+                  sh("git push https://${GIT_USERNAME}:${GIT_PASSWORD}@${repoName} --tags")
+
+              }
+          }
+      }
+     stage('Sonarqube') {
+   
+		steps {
+		    println "sonarqube checking"
+			sh "mvn -e -B sonar:sonar -Dsonar.java.source=1.8 -Dsonar.surefire.reportsPath=target/surefire-reports -Dsonar.dynamicAnalysis=reuseReports -Dsonar.cobertura.reportPath=target/site/cobertura/coverage.xml -Dsonar.host.url=http://34.66.44.154:9000/ -Dsonar.login=48ab837f76ed9c6d2feb872942a0dd663ec7cd82 -Dsonar.sourceEncoding=UTF-8 -Dsonar.projectKey=practice-works -Dsonar.cpd.cross_project=false  -Dsonar.projectName=works" 
+		   
+			
+		}
+	}
+       stage('Deploy to Nexus')
+			{
+            steps{
+			    println "[INFO] running deploy to nexus"
+				println "${filename}"
+				//Uncommented for actual testing
+                step([$class: 'NexusArtifactUploader', artifacts: [[artifactId: "${nexusartifactId}", classifier: '', file: "${filename}", type: 'war']], credentialsId: 'nexus-server', groupId: 'com.visualpathit', nexusUrl: '35.193.85.190:8081', nexusVersion: 'nexus3', protocol: 'http', repository: "${nexusRepo}", version: "${version}"])	
+	            }
+            }
+            
+        stage('Build and Publish'){
+            steps{
+                println "inside the Build and Publish stage"
+              /*        withDockerRegistry([ credentialsId: "docker-login", url: "" ]){
+                    sh '''
+                       docker --version
+                       docker build -t javaapp:$BUILD_NUMBER .
+                       docker tag javaapp:$BUILD_NUMBER ramakrishna2709/javaapp:$BUILD_NUMBER
+                       docker push ramakrishna2709/javaapp:$BUILD_NUMBER
+                    '''
+                    } */
+                    
+                println "push image with script tag"
+                
+                    script {
+                      dockerImage = docker.build registry + ":$BUILD_NUMBER"
+                      docker.withRegistry( '', registryCredential ) {
+                        dockerImage.push()
+                    }
+                            
+                }
+            }
+        }
+		stage('Ansible Init') {
+            steps {
+                script {
+                
+               def tfHome = tool name: 'Ansible'
+                env.PATH = "${tfHome}:${env.PATH}"
+                 sh 'ansible --version'
+                    
+            }
+            }
+        }
+         stage('Ansible invenory') {
+             
+            steps {
+                 
+              dir('ansible')
+              {
+               
+               sh 'ansible webservers -m ping -i inventory'
+              
+               
+            }
+            }
+            
+        }
+		
+		stage('Ansible Servers Installation'){
+            steps{
+                dir('ansible'){
+                    sh 'ansible-playbook -i ${WORKSPACE}/ansible/inventory tomcat-install.yml'
+                }
+                
+            }
+        }
+        
+         stage('Ansible Application Deploy'){
+            steps{
+                dir('ansible'){
+                    sh 'ansible-playbook -i ${WORKSPACE}/ansible/inventory tomcat-deploy.yml'
+                }
+                
+            }
+        }
+       
+		
+}
+}
+
+

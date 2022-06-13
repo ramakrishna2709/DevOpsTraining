@@ -1,0 +1,173 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/port: "9090"
+    prometheus.io/scrape: "true"
+  labels:
+    app: rabbitmq-exporter
+    type: LoadBalancer
+  name: rabbitmq-exporter
+  namespace: NAMESPACE
+spec:
+  ports:
+  - name: rabbitmq-exporter
+    port: 9090
+    protocol: TCP
+    targetPort: 9090
+  selector:
+    app: rabbitmq
+  sessionAffinity: None
+  type: ClusterIP
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: rabbitmq
+    type: LoadBalancer
+  name: rabbitmq
+  namespace: NAMESPACE
+spec:
+  externalTrafficPolicy: Cluster
+  ports:
+  - name: http
+    nodePort: 31671
+    port: 15672
+    protocol: TCP
+    targetPort: 15672
+  - name: amqp
+    nodePort: 30671
+    port: 5672
+    protocol: TCP
+    targetPort: 5672
+  selector:
+    app: rabbitmq
+  sessionAffinity: None
+  type: NodePort
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-config
+  namespace: NAMESPACE
+data:
+  enabled_plugins: |
+      [rabbitmq_management,rabbitmq_peer_discovery_k8s,accept,prometheus,prometheus_cowboy,prometheus_httpd,prometheus_rabbitmq_exporter,prometheus_process_collector].
+
+  rabbitmq.conf: |
+      cluster_formation.peer_discovery_backend  = rabbit_peer_discovery_k8s
+      cluster_formation.k8s.host = kubernetes.default.svc.cluster.local
+      cluster_formation.k8s.address_type = ip
+      cluster_formation.node_cleanup.interval = 30
+      cluster_formation.node_cleanup.only_log_warning = true
+      cluster_partition_handling = autoheal
+      queue_master_locator=min-masters
+      loopback_users.guest = false
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: rabbitmq
+  name: rabbitmq
+  namespace: NAMESPACE
+spec:
+  podManagementPolicy: OrderedReady
+  replicas: 3
+  selector:
+    matchLabels:
+      app: rabbitmq
+  serviceName: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+      - env:
+        - name: MY_POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: RABBITMQ_USE_LONGNAME
+          value: "true"
+        - name: RABBITMQ_NODENAME
+          value: rabbit@$(MY_POD_IP)
+        - name: K8S_SERVICE_NAME
+          value: rabbitmq
+        - name: RABBITMQ_ERLANG_COOKIE
+          value: mycookie
+        image: us.gcr.io/just-slate-88918/rabbitmq:3.7
+        imagePullPolicy: Always
+        livenessProbe:
+          exec:
+            command:
+            - rabbitmqctl
+            - status
+          failureThreshold: 3
+          initialDelaySeconds: 60
+          periodSeconds: 60
+          successThreshold: 1
+          timeoutSeconds: 10
+        name: rabbitmq-k8s
+        ports:
+        - containerPort: 15672
+          name: http
+          protocol: TCP
+        - containerPort: 5672
+          name: amqp
+          protocol: TCP
+        readinessProbe:
+          exec:
+            command:
+            - rabbitmqctl
+            - status
+          failureThreshold: 3
+          initialDelaySeconds: 20
+          periodSeconds: 60
+          successThreshold: 1
+          timeoutSeconds: 10
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/rabbitmq
+          name: config-volume
+      - image: us.gcr.io/just-slate-88918/rabbitmq-exporter:3.7-management
+        imagePullPolicy: Always
+        name: rabbitmq-exporter
+        ports:
+        - containerPort: 9090
+          name: port9090
+          protocol: TCP
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      imagePullSecrets:
+      - name: aso-gcr-secret
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: rabbitmqNAMESPACEsvc
+      serviceAccountName: rabbitmqNAMESPACEsvc
+      terminationGracePeriodSeconds: 10
+      volumes:
+      - configMap:
+          defaultMode: 420
+          items:
+          - key: rabbitmq.conf
+            path: rabbitmq.conf
+          - key: enabled_plugins
+            path: enabled_plugins
+          name: rabbitmq-config
+        name: config-volume
+  updateStrategy:
+    type: OnDelete

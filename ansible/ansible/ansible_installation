@@ -1,0 +1,23 @@
+#ubuntu machine
+$ sudo apt-get update
+$ sudo apt-get install software-properties-common
+$ sudo apt-add-repository ppa:ansible/ansible
+$ sudo apt-get update
+$ sudo apt-get install ansible
+
+#check the ansible version
+$ ansible --version
+
+#####################description#######################
+Ansible is a configuration management and orchestration tool. It works as an IT automation engine.
+
+Ansible can be run directly from the command line without setting up any configuration files. You only need to install Ansible on the control server or node. It communicates and performs the required tasks using SSH. No other installation is required. This is different from other orchestration tools like Chef and Puppet where you have to install software both on the control and client nodes.
+
+Ansible uses configuration files called playbooks for a series of tasks. The playbooks are written in YAML syntax.
+
+###################
+
+The open source product is maintained by Ansible Inc. It was first released in 2012. Red Hat acquired Ansible in 2015. Red Hat Ansible Engine and Red Hat Ansible Tower are commercial products.
+
+Due to the ease of use, Ansible is rising in popularity as an IT automation tool.
+

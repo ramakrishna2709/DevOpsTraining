@@ -1,0 +1,29 @@
+---
+- hosts: all
+  become: yes
+  become_method: sudo
+  remote_user: devops_practiceworks2019
+  vars: 
+    - name: "{{BuildVersion}}"
+
+  tasks:
+    - name: Print message
+      debug: msg="Hello to  from Ansible!!"
+    - name: Make sure that we can connect to the machine
+      ping:
+      
+   
+      
+    - name: Download latest build artifact file
+      #get_url: 
+      get_url: 
+        url: http://10.128.0.6:8081/repository/maven-releases/com/visualpathit/vprofile/{{name}}/vprofile-{{name}}.war 
+        #url: http://34.68.124.30:8081/repository/maven-releases/com/visualpathit/vprofile/84/vprofile-84.war
+        dest: /opt/tomcat/webapps/vprofile-84.war 
+        owner: tomcat 
+        group: tomcat 
+        mode: 0755
+
+
+
+  

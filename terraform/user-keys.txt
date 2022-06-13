@@ -1,0 +1,54 @@
+
+
+1. keys in variables, main.tf file
+
+2. export access_key=""
+   export seret_key=""
+
+
+3. ~.aws/credentials
+4. Iam user and roles
+
+
+Terraform loads variables in the following order, with later sources taking precedence over earlier ones:
+
+Environment variables
+The terraform.tfvars file, if present.
+The terraform.tfvars.json file, if present.
+Any *.auto.tfvars or *.auto.tfvars.json files, processed in lexical order of their filenames.
+Any -var and -var-file options on the command line, in the order they are provided. (This includes variables set by a Terraform Cloud workspace.)
+
+
+ vpc 
+ subnets
+
+  2ec2 instances
+  security group
+
+  apache server install in ec2 machines 
+
+  target group
+    assign ec2 instnaaces
+
+  load balancer
+   with target group
+
+ auto scaling
+ scale up ec2 instance(min,max)
+
+
+data blocks
+
+s3bucket, iam user, polices
+
+backend proivder:aws(s3)
+
+ for storing .tf state
+
+
+module
+
+workspace
+
+ 
+aws-serverless-application-ci-cd-with-codepipeline with angular

@@ -1,0 +1,29 @@
+---
+- hosts: all
+  become: yes
+  become_method: sudo
+  remote_user: devops_practiceworks2019
+
+  tasks:
+    - name: Make sure that we can connect to the machine
+      ping:
+
+    - name: Stop Tomcat
+      command: sh /opt/tomcat/bin/shutdown.sh
+      become: true
+      become_user: tomcat
+
+    - name: Remove Tomcat
+      file:
+        path: /opt/tomcat
+        state: absent
+
+    - name: remove user "tomcat"
+      user:
+        name: tomcat
+        state: absent
+
+    - name: remove group "tomcat"
+      group:
+        name: tomcat
+        state: absent

@@ -1,0 +1,248 @@
+node(env.JenkinsSlaveNode) {
+	//Setting up variables to be used in pipeline
+	def checkoutBranch = env.GIT_BRANCH
+	def gimageName = env.JOB_NAME.tokenize( '_' )[1].toLowerCase()
+	def envName = env.JOB_NAME.tokenize( '_' )[0].toLowerCase()
+    //String namespace = envName
+	String repoName = ("https://bitbucket.org/academysports/" + env.repositoryName + ".git");
+    def d = new Date(currentBuild.startTimeInMillis) 
+    def tz = TimeZone.getTimeZone('CST') 
+	def revID = d.format("yyyyMMMdd'T'HHmmz", tz)
+	def pipelineRepo = 'https://bitbucket.org/academysports/devops-cd-pipeline.git'
+	def pipelineBranch = env.pipelinebname
+	def buildmethod = env.BuildType
+    def regexPattern = ~/(?i)([a-z0-9]+-(\d)+-[a-z0-9]+-[a-z0-9-\.]+)/
+	env.buildmethod = "$buildmethod"
+	env.gimageName = "$gimageName"
+	env.envName = "$envName"
+	env.revID = "$revID"
+	env.checkoutBranch = "$checkoutBranch"
+    env.regexPattern = "$regexPattern"
+	env.checkoutBranch = "$checkoutBranch"
+	def branchName = env.checkoutBranch.tokenize( '/' ).join('_')
+	env.branchName = "$branchName"
+	currentBuild.result = "SUCCESS"
+
+	println envName
+	println gimageName
+
+    try {
+
+		//Cleaning workspace
+		cleanWs()
+
+		stage('Reading Properties'){
+            checkout([$class: 'GitSCM', branches: [[name: "${pipelineBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: "${pipelineRepo}"]]])
+            //Reading properties
+            def content = readFile "properties/${envName}.properties"
+
+            Properties properties = new Properties()
+            InputStream is = new ByteArrayInputStream(content.getBytes());
+            properties.load(is)
+            //Setting up env variables
+            env.sonarUrl = properties."${envName}.sonarUrl"
+			env.nexusUrl = properties."${envName}.nexusUrl"
+			env.zuulIP = properties."${envName}.${gimageName}.zuulIP"
+			env.googleTagManagerID = properties."${envName}.${gimageName}.googleTagManagerID"
+			env.authorHostName = properties."${envName}.${gimageName}.authorHostName"
+			env.publisherHostNames = properties."${envName}.${gimageName}.publisherHostNames"
+			env.authorPassword = properties."${envName}.${gimageName}.authorPassword"
+			env.publishPassword = properties."${envName}.${gimageName}.publishPassword"
+
+			if(checkoutBranch ==~ regexPattern){
+				def extractedBranchName = ExtractBranchName(checkoutBranch)
+				env.tagName = "${envName}-${BUILD_NUMBER}-${revID}-${extractedBranchName}"
+			}
+			else{
+				env.tagName = "${envName}-${BUILD_NUMBER}-${revID}-${branchName}"
+			}
+             println tagName
+        }
+		
+		if( buildmethod.equals("Build Only") || buildmethod.equals("Build & Deploy") ){
+			stage('Checkout'){
+				checkout([$class: 'GitSCM', branches: [[name: "${checkoutBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: "${repoName}"]]])
+			}
+			
+			stage('Changing the propfile'){
+				sh "sed -i \"s/API_ZUUL_IP/${zuulIP}/g\" ${WORKSPACE}/ui.apps/src/main/content/jcr_root/apps/academysports/config/com.academysports.core.services.impl.GlobalOSGIConfigServiceImpl.config.xml"
+			}
+			
+			stage('Changing GTM'){
+				sh '''
+					sed -i \"s/GOOGLETAGMANAGERID/$googleTagManagerID/g\"   ${WORKSPACE}/ui.apps/src/main/content/jcr_root/apps/academysports/config/com.academysports.core.services.impl.GlobalOSGIConfigServiceImpl.config.xml
+					cat ${WORKSPACE}/ui.apps/src/main/content/jcr_root/apps/academysports/config/com.academysports.core.services.impl.GlobalOSGIConfigServiceImpl.config.xml
+				'''
+			}
+			
+			stage('Build'){
+				println "Inside Build stage"
+				withEnv( ["PATH+MAVEN=${tool 'mvn-3.x.x'}/bin"] ) {
+					sh "mvn clean install -Dskiptest=true"
+				}
+			}
+			try{
+				stage('UnitTest'){
+					println "Inside UnitTest stage"
+					withEnv( ["PATH+MAVEN=${tool 'mvn-3.x.x'}/bin"] ) {
+						sh "mvn test -B"
+					}
+					step([$class: 'JUnitResultArchiver', testResults: '**/target/surefire-reports/TEST-*.xml'])
+				}
+			}	
+			catch (e) {
+				echo "Inside UnitTest catch"
+				echo e.toString()
+			}	
+			try{
+				stage('Code Quality - Sonar'){
+					println "Inside Sonar stage"
+					//println sonarUrl
+					withEnv( ["PATH+MAVEN=${tool 'mvn-3.x.x'}/bin"] ) {
+						sh "cd core && mvn -e -B sonar:sonar -Dsonar.java.source=1.8 -Dsonar.surefire.reportsPath=**/target/surefire-reports -Dsonar.dynamicAnalysis=reuseReports -Dsonar.cobertura.reportPath=target/site/cobertura/coverage.xml -Dsonar.host.url=${sonarUrl} -Dsonar.login=65897940c198a7f06b05ce2530b32dae97e73cf0 -Dsonar.projectKey=com.academy:aem.core.${branchName} -Dsonar.projectName=\"aem-core-${branchName}\" -Dsonar.sourceEncoding=UTF-8 && cd ../"
+					}
+				}
+			}
+			catch (e) {
+				echo "Inside sonar catch"
+				echo e.toString()
+			}
+			stage('Apply Tag'){ 
+				    //withCredentials([usernamePassword(credentialsId: 'ASOGCPBitbucketCredentials', passwordVariable: 'bitbucketPass', usernameVariable: 'bitbucketUser')]) {
+				    //withCredentials([usernamePassword(credentialsId: 'kishoresayee', passwordVariable: 'bitbucketPass', usernameVariable: 'bitbucketUser')]) {
+				    withCredentials([usernamePassword(credentialsId: 'ee9ee2a1-1610-4102-ab77-512fa52a8ed4', passwordVariable: 'bitbucketPass', usernameVariable: 'bitbucketUser')]) {
+					sh "echo $tagName"
+					sh("git tag -a ${tagName} -m 'Tag for ${gimageName}'")
+					sh("git push https://${bitbucketUser}:${bitbucketPass}@bitbucket.org/academysports/${repositoryName}.git --tags")
+				}
+			}
+				
+			stage('Preparing UI Apps for Nexus upload'){
+				//UI Apps
+				def xmlFileUIApps = readFile "ui.apps/pom.xml"
+				def projectUIApps = new XmlSlurper().parseText(xmlFileUIApps)
+				def nexusartifactIdUIApps = projectUIApps.artifactId.text()
+				def versionFromPomUIApps = projectUIApps.parent.version.text()
+
+				def versionSubStringUIApps = "${BUILD_NUMBER}-${branchName}"
+				if(checkoutBranch ==~ regexPattern){
+					def extractedBranchName = ExtractBranchName(checkoutBranch)
+					versionSubStringUIApps = "${BUILD_NUMBER}-${extractedBranchName}"
+				}
+
+				if(versionFromPomUIApps.contains("SNAPSHOT")){
+					env.nexusRepoUIApps = "cms-snapshots"
+				}
+				else{
+					env.nexusRepoUIApps = "cms-releases"
+				}
+				def filenameUIApps = "ui.apps/target/${nexusartifactIdUIApps}-${versionFromPomUIApps}.zip"
+				env.versionSubStringUIApps = "$versionSubStringUIApps"
+				env.nexusartifactIdUIApps = "$nexusartifactIdUIApps"
+				env.versionUIApps = "${versionSubStringUIApps}-${versionFromPomUIApps}"
+				env.versionFromPomUIApps = "$versionFromPomUIApps"
+				env.filenameUIApps = "$filenameUIApps"
+			}
+
+			stage('Preparing Core for Nexus upload'){
+				//Core
+				def xmlFileCore = readFile "core/pom.xml"
+				def projectCore = new XmlSlurper().parseText(xmlFileCore)
+				def nexusartifactIdCore = projectCore.artifactId.text()
+				def versionFromPomCore = projectCore.parent.version.text()
+
+				def versionSubStringCore = "${BUILD_NUMBER}-${branchName}"
+				if(checkoutBranch ==~ regexPattern){
+					def extractedBranchName = ExtractBranchName(checkoutBranch)
+					versionSubStringCore = "${BUILD_NUMBER}-${extractedBranchName}"
+				}
+
+				if(versionFromPomCore.contains("SNAPSHOT")){
+					env.nexusRepoCore = "cms-snapshots"
+				}
+				else{
+					env.nexusRepoCore = "cms-releases"
+				}
+				def filenameCore = "core/target/${nexusartifactIdCore}-${versionFromPomCore}.jar"
+				env.versionSubStringCore = "$versionSubStringCore"
+				env.nexusartifactIdCore = "$nexusartifactIdCore"
+				env.versionCore = "${versionSubStringCore}-${versionFromPomCore}"
+				env.versionFromPomCore = "$versionFromPomCore"
+				env.filenameCore = "$filenameCore"
+			}
+
+			stage('Deploy to Nexus'){						
+				step([$class: 'NexusArtifactUploader', artifacts: [[artifactId: "${nexusartifactIdUIApps}-${envName}", classifier: '', file: "${filenameUIApps}", type: 'zip']], credentialsId: '61abe64a-5f7a-48ba-b4c6-d1320934b315', groupId: 'com.academy', nexusUrl: '10.104.36.5', nexusVersion: 'nexus3', protocol: 'http', repository: "${nexusRepoUIApps}", version: "${versionUIApps}"])
+				step([$class: 'NexusArtifactUploader', artifacts: [[artifactId: "${nexusartifactIdCore}-${envName}", classifier: '', file: "${filenameCore}", type: 'jar']], credentialsId: '61abe64a-5f7a-48ba-b4c6-d1320934b315', groupId: 'com.academy', nexusUrl: '10.104.36.5', nexusVersion: 'nexus3', protocol: 'http', repository: "${nexusRepoCore}", version: "${versionCore}"])
+			}
+		}
+
+		if(buildmethod.equals("Deploy Only")){
+			stage('Prepare for Downloading from Nexus'){
+				String packageDownlodUrl = ""
+				def jsonResult = new groovy.json.JsonSlurper().parseText(new URL("http://" + nexusUrl + "/service/rest/beta/search/assets?repository=cms-" + versionType + "&group=com.academy&name=academysports.ui.apps-" + envName + "&version=" + packageVersion).getText())
+				jsonResult.items.find{
+					if(it.downloadUrl.contains(packageVersion) && !it.downloadUrl.contains("md5") && !it.downloadUrl.contains("sha1")){
+						packageDownlodUrl = it.downloadUrl
+						return true
+					}
+				}
+				env.packageDownlodUrl = "$packageDownlodUrl"
+		   	}
+
+			stage('Downloading from Nexus'){
+				sh '''
+					wget $packageDownlodUrl
+				'''
+				def filenameUIApps =sh(returnStdout: true, script:"ls *.zip").trim()
+				env.filenameUIApps = "$filenameUIApps"
+			}
+
+		}
+	       
+		if( !buildmethod.equals("Build Only") ){
+			if(currentBuild.result=='SUCCESS'){
+				stage('Deploying to Author'){
+				//comment this out for prod and prd-dr
+					sh '''
+						curl -u admin:${authorPassword} -F file=@"$WORKSPACE/$filenameUIApps" -F name="academysportsui" -F force=true -F install=true http://$authorHostName/crx/packmgr/service.jsp
+					'''
+					println filenameUIApps
+				}
+			}
+		
+			if(currentBuild.result=='SUCCESS'){
+				stage('Deploying to Publish'){
+					publisherHostNames.tokenize(",").each{publisherHostName ->
+					env.publisherHostName = "$publisherHostName"
+					sh '''
+						curl -u admin:${publishPassword} -F file=@"$WORKSPACE/$filenameUIApps" -F name="academysportsui" -F force=true -F install=true http://$publisherHostName/crx/packmgr/service.jsp
+					'''
+					}
+					println filenameUIApps
+				}
+			}
+		}
+	}
+    catch (err) {
+        currentBuild.result = "FAILURE"
+		//Commented for testing
+        //step([$class: 'Mailer', notifyEveryUnstableBuild: true, recipients: 'hkhan2@sapient.com,mramanathan@sapient.com,sandeep.bysani@sapient.com', sendToIndividuals: false])
+        throw err
+    }
+}
+
+
+//Function to extract branch name from tag string
+def ExtractBranchName(sourceString) {
+    def extractedBranchName = ''
+    def n = 3
+    def pos = sourceString.indexOf("-")
+                
+    //This is to take out the branch name from existing tag
+    while (--n > 0 && pos != -1){
+        pos = sourceString.indexOf("-", pos + 1)
+    }
+    extractedBranchName = sourceString.substring(pos + 1)
+    return extractedBranchName
+}

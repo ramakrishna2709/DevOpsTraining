@@ -1,0 +1,130 @@
+pom.xml ->
+
+version: 1.1
+snapshot: 0.9-snapshot
+
+
+run time:
+
+
+ vprofile-1.1-${build}-${timstamp}.war
+
+
+- hosts: webservers
+
+- hosts: qaservers
+
+
+http://34.68.97.167:8081/repository/maven-releases/com/visualpathit/vprofile/84/vprofile-84.war
+
+
+Varaibles:
+
+1. inventory ->
+2. playbook->
+3. Roles->
+
+Modules:apache: -> http, ssl, encrypt
+
+Playbook=====
+tasks:
+ vars:
+   moduleslist=[http, ssl, encrypt]
+
+ -name:  isntall the mdoeus
+   yum:
+    install {{item}
+  with_items: {{moduleslist }}
+
+roles:
+
+vars.yml
+
+-include_vars: var.yml
+
+group_vars:
+
+
+
+
+---------------------- FACTS:---------
+
+FACTS: SYSTEM INFORMATION ABOUT YOUR ALL INVENTORY SERVERS
+ 
+
+INVENTORY:
+[webservers]
+
+ host1 10.128.0.5 (centos server)
+host2 10.128.0.6(debain)
+
+
+
+goal:  install apache with webservers group.
+
+cenots: --> apache -> httpd
+debain: -> aapche-> apache2
+
+
+===playbook:
+
+
+yum: 
+install {{httpd}} -->
+
+trying ot eect wiht invenroy
+ansible-playbook apache.yml -
+
+
+
+set up ---> will get all informaiton about ur server data==>
+
+ip add
+
+os
+
+====>
+
+
+
+ansible_os_family: ===>  centos
+
+ debain>
+
+linux>
+
+
+
+
+pipeline {
+
+ agent:
+
+ stages{
+stage{
+step{
+
+}
+}
+}
+}
+
+
+
+node(nodename){
+
+ stage{
+}
+stage{
+
+}
+
+
+
+
+----------------------switch to devops-------------
+ Exp: 10years
+
+ devops: 4-5 years
+
+}

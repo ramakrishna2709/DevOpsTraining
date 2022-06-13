@@ -1,0 +1,51 @@
+- hosts: webservers
+  vars:
+    greeting: welcome Hello world! 
+    continents:
+      - Africa
+      - Asia
+      - South America
+      - North America
+      - Europe
+
+    regions: [Africa, Asia, South America, North America, Europe] 
+    python:
+      Designer: 'Guido van Rosum'
+      Developer: 'Python Software Foundation'
+      OS: 'Cross-platform'
+
+  tasks:
+  - name: Ansible Basic Variable Example
+    debug:
+      msg: "{{ greeting }}"
+	  
+
+  - name: Ansible List variable Example
+    debug:
+      msg: "{{ continents [1] }}"
+
+  - name: Ansible array variables with with_items module
+    debug: 
+      msg: "{{ item }}"
+    with_items:
+      - "{{ continents }}"
+  - name: Ansible variables from inventory file
+    debug:
+      msg: "{{http_port }}"
+
+  - name: Ansible Dictionary Example
+    debug:
+      msg: "{{ python }}"
+
+  - name: Ansible Hash Example
+    debug:
+      msg: "{{python['Designer'] }}"
+
+  - name: Ansible Find Example
+    debug:
+      msg: "{{python.Designer }}"
+
+  - name: Ansible Dictionary variable Example
+    debug:
+      msg: "Key is {{ item.key}} and value is {{item.value}}"
+    with_dict: "{{ python }}"

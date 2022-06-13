@@ -1,0 +1,38 @@
+
+execrcise:----------------
+data:
+
+ get avilablity zones list -
+ 
+ filter by region --us-east-1
+ 
+    output:
+	 us-east-1a
+	 us-east-1b
+	 us-east-1c
+	 us-east-1d
+ 
+ 
+ Resource :
+ 
+  ec2 isntances, subnet
+  
+  use  the exisitng avialblity zone from data block
+   use any of az
+   us-east-1a
+	 us-east-1b
+	 us-east-1c
+	 us-east-1d
+  
+  
+ ##########
+ 
+data block:
+ 
+get the se bucket url from the data s3 block
+
+##############
+get the role informaiton using data block of iam_role
+
+
+  

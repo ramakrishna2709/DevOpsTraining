@@ -1,0 +1,21 @@
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: VCPUMAX
+            memory: VMEMORYMAX
+          requests:
+            cpu: VCPUMIN
+            memory: VMEMORYMIN
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+              - SYS_ADMIN
+        readinessProbe:
+          failureThreshold: 5
+          initialDelaySeconds: READINESSPROBEDELAY
+          periodSeconds: 5
+          successThreshold: 1
+          tcpSocket:
+            port: APPPNUMBER
+          timeoutSeconds: 1

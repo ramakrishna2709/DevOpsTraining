@@ -1,0 +1,18 @@
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: APPLICATIONNAME
+  namespace: NAMESPACE
+  labels:
+    app: APPLICATIONNAME
+spec:
+  ports:
+  - name: tcp-PORT-APPPNUMBER-APPLICATIONNAME
+    protocol: TCP
+    port: PORT
+    targetPort: APPPNUMBER
+  selector:
+    app: APPLICATIONNAME
+  type: ClusterIP
+  sessionAffinity: None

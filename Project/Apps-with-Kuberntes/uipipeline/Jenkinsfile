@@ -1,0 +1,364 @@
+node(env.JenkinsSlaveNode) {
+	def checkoutBranch = env.GIT_BRANCH
+	def gimageName = env.JOB_NAME.tokenize( '_' )[1]
+	def envName = env.JOB_NAME.tokenize( '_' )[0]
+	String repoName = ("https://bitbucket.org/academysports/" + env.repositoryName + ".git");
+	String namespace = envName
+	def d = new Date(currentBuild.startTimeInMillis) 
+    def tz = TimeZone.getTimeZone('CST') 
+	def revID = d.format("yyyyMMMdd'T'HHmmz", tz)
+	def pipelineRepo = 'https://bitbucket.org/academysports/devops-cd-pipeline.git'
+	def pipelineBranch = env.pipelinebname
+	def regexPattern = ~/(?i)([a-z0-9]+-(\d)+-[a-z0-9]+-[a-z0-9-\.]+)/
+	def buildmethod = env.BuildType
+	env.buildmethod = "$buildmethod"
+	env.gimageName = "$gimageName"
+	env.envName = "$envName"
+	env.revID = "$revID"
+    env.myEnvName = "dev"
+	env.checkoutBranch = "$checkoutBranch"
+	currentBuild.result = "SUCCESS"
+	def deploymentType = env.DeploymentType
+	env.deploymentType = "$deploymentType"
+	def branchName = env.checkoutBranch.tokenize( '/' ).join('_')
+	env.branchName = "$branchName"
+	env.regexPattern = "$regexPattern"
+	
+	if (env.envName.equals("uat") || env.envName.equals("prod")){
+        namespace = "default"
+    }
+	
+    env.namespace = "$namespace"
+    println namespace
+	
+	try {
+
+		//Cleaning workspace
+		cleanWs()
+
+		stage('Reading Properties'){
+            checkout([$class: 'GitSCM', branches: [[name: "${pipelineBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: "${pipelineRepo}"]]])
+            //Reading properties
+            def content = readFile "properties/${envName}.properties"
+
+            Properties properties = new Properties()
+            InputStream is = new ByteArrayInputStream(content.getBytes());
+            properties.load(is)
+            //Setting up env variables
+            env.sonarUrl = properties."${envName}.sonarUrl"
+            env.nexusUrl = properties."${envName}.nexusUrl"
+            env.sonarExclusions = properties."${envName}.${gimageName}.sonarExclusions"
+            env.sonarTestInclusions = properties."${envName}.${gimageName}.sonarTestInclusions"
+			env.sonarJSExclusions = properties."${envName}.${gimageName}.sonarJSExclusions"
+			env.uiEnvName = properties."${envName}.${gimageName}.uiEnvName"
+			env.sonarSources = properties."${envName}.${gimageName}.sonarSources"
+			env.sonarTests = properties."${envName}.${gimageName}.sonarTests"
+                
+
+            //Creating tag string
+            if(buildmethod.equals("Build Only") || buildmethod.equals("Build & Deploy")){
+                //Checking the branch name against the regular expression
+                //If checkoutbranch parameter value is an existing tag, extract the branch from it
+                if(checkoutBranch ==~ regexPattern){
+                    def extractedBranchName = ExtractBranchName(checkoutBranch)
+                    env.tagName = "${BUILD_NUMBER}-${revID}-${extractedBranchName}"
+                }
+                else{
+                    env.tagName = "${BUILD_NUMBER}-${revID}-${branchName}"
+                }        
+            }
+            //println tagName
+        }
+
+		if( buildmethod.equals("Build Only") || buildmethod.equals("Build & Deploy")){
+			
+			stage('Checkout'){
+				checkout([$class: 'GitSCM', branches: [[name: "${checkoutBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: "${repoName}"]]])
+			}
+			
+			stage('Build'){
+				sh '''
+				 	npm cache verify
+					npm i
+				'''
+				if(  deploymentType.equals("components") ) {	
+					sh '''
+						npm run build:apps -- -d -e=${uiEnvName} -c=${components}		
+					'''
+				}
+				
+				if(  deploymentType.equals("vendor") ) {
+					sh '''
+						npm run build:vendor -- -d -e=${uiEnvName} 	
+					'''
+				}
+				
+				if(  deploymentType.equals("whole") ) {
+					println "Building whole package"
+					sh ''' 
+						npm run build -- -d -e=${uiEnvName}
+					'''
+				}		
+			}
+		
+			try {
+				stage('UnitTest'){
+					sh "make clean"
+					sh "make unittests"
+				}
+			} 
+			catch (e) {
+				echo "Inside UnitTest catch"
+				echo e.toString()
+			}
+
+			//Commenting out as it is failing
+			try {
+				stage('Code Coverage'){
+					sh "make coverage"
+				}
+			} 
+			catch (e) {
+				echo "Inside CodeCoverage catch"
+				echo e.toString()
+			}	
+		
+			try{		
+				stage('Code Quality - Sonar'){
+					def jsonFile = readJSON file: 'package.json'
+					def versionFromJson = jsonFile.version
+					env.versionFromJson = "$versionFromJson"	
+					//sh "sed -i 's/sonar.projectKey=com.academy:ui-reg/sonar.projectKey=com.academy:ui-component-registry-${checkoutBranch}/g' sonar-project.properties"
+					//sh "sed -i 's/sonar.projectName=ui-reg/sonar.projectName=ui-component-registry-${checkoutBranch}/g' sonar-project.properties"
+					//sh "make sonar"
+					sh "sonar-scanner -Dsonar.login=d92e0f1d5e1e2f0c2dd24f18c8abe5fa1f5ad079 -Dsonar.host.url=${sonarUrl} -Dsonar.projectKey=com.academy:${gimageName}-${branchName} -Dsonar.projectName=com.academy:${gimageName}-${branchName} -Dsonar.projectVersion=${versionFromJson} -Dsonar.sources=${sonarSources} -Dsonar.exclusions=${sonarExclusions} -Dsonar.sourceEncoding=UTF-8 -Dsonar.tests=${sonarTests} -Dsonar.language=js -Dsonar.dynamicAnalysis=reuseReports -Dsonar.test.inclusions=${sonarTestInclusions} -Dsonar.javascript.exclusions=${sonarJSExclusions} -Dsonar.javascript.jstest.reportPaths=reports/TESTS-all.xml -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info -Dsonar.testExecutionReportPaths=reports/TESTS-all.xml"
+				}	
+			} 
+			catch (e) {
+				echo "Inside UnitTest catch"
+				echo e.toString()
+			}
+	   		
+			//Commenting out for testing
+			stage('Apply Tag'){
+				//withCredentials([usernamePassword(credentialsId: 'ASOGCPBitbucketCredentials', passwordVariable: 'bitbucketPass', usernameVariable: 'bitbucketUser')]) {
+				withCredentials([usernamePassword(credentialsId: 'ee9ee2a1-1610-4102-ab77-512fa52a8ed4', passwordVariable: 'bitbucketPass', usernameVariable: 'bitbucketUser')]) {
+					sh("git tag -a ${tagName} -m 'Tag for ${gimageName}'")
+                    sh("git push https://${bitbucketUser}:${bitbucketPass}@bitbucket.org/academysports/${repositoryName}.git --tags")
+				}
+			}
+
+			stage('Deploy to Nexus')
+			{
+				println "[INFO] running deploy to nexus"
+			 	def version = "${versionFromJson}-${BUILD_NUMBER}-${revID}-${branchName}"
+				if(checkoutBranch ==~ regexPattern){
+					def extractedBranchName = ExtractBranchName(checkoutBranch)
+					version = "${versionFromJson}-${BUILD_NUMBER}-${revID}-${extractedBranchName}"
+				}
+				env.version = "$version"
+			 	def nexusartifactId = sh(returnStdout: true, script: "echo ${gimageName}").trim()
+			 
+			 	if(  deploymentType.equals("whole") ) {
+		     		println "whole (components, vendor, assets, env) deploy to nexus "
+			 	 	sh '''
+			   	 		cd ${WORKSPACE}/dist 
+				        mkdir $version
+						cp -r components $version
+						cp -r vendor $version
+						cp -r assets $version
+						cp -r env $version
+						zip -r  ${version}.zip $version
+					'''
+				}
+			
+				if(  deploymentType.equals("components") || deploymentType.equals("vendor") ) {
+		    	 	println "Only selected components  deploy to nexus " 
+		    		sh '''
+		                cd ${WORKSPACE}/dist
+						mkdir $version
+						
+		                if [ -d components ];
+					    then   	
+					       	cp -r components $version
+						else
+						    echo -e " components dir not exists "
+					    fi
+						
+						if [ -d vendor ];
+					    then
+					       	cp -r vendor $version
+						else
+						    echo -e " vendor dir not exists "
+					    fi
+						
+						if [ -d assets ];
+					    then
+							cp -r assets $version
+						 
+						else
+						    echo -e " assets dir not exists "
+					    fi	
+
+						zip -r  ${version}.zip $version
+					'''
+		
+				}
+
+				if(  deploymentType.equals("env") ) {
+					sh '''
+						cd ${WORKSPACE}/dist
+						mkdir $version
+						
+						if [ -d env ];
+					    then
+							cp -r env $version
+						 
+						else
+						    echo -e " env dir not exists "
+					    fi
+
+						zip -r  ${version}.zip $version
+					'''
+				}
+			
+            	println "${nexusartifactId}"
+				filename = "${version}.zip"
+				println "${filename}"				
+				step([$class: 'NexusArtifactUploader', artifacts: [[artifactId: "${nexusartifactId}-${deploymentType}", classifier: '', file: "dist/${filename}", type: 'zip']], credentialsId: '61abe64a-5f7a-48ba-b4c6-d1320934b315', groupId: 'com.academy', nexusUrl: "${nexusUrl}", nexusVersion: 'nexus3', protocol: 'http', repository: 'ui-repo', version: "${version}"])
+			}
+
+		}
+
+		if(buildmethod.equals("Deploy Only")){
+			stage('Prepare for Downloading from Nexus'){
+				String packageDownlodUrl = ""
+				String addrFirst = "http://" + nexusUrl + "/service/rest/beta/search/assets?repository=ui-repo&group=com.academy&name=uicomponentregistry-" + deploymentType + "&version=" + packageVersion
+				String authString = "amVua2luczpOd0FOOVVlano3a3dlMQ=="
+				/*def conn = addrFirst.toURL().openConnection()
+				conn.setRequestProperty( "Authorization", "Basic ${authString}" )
+				if( conn.responseCode == 200 ) {*/
+					def jsonResult = new groovy.json.JsonSlurper().parseText(new URL(addrFirst).getText(requestProperties: ['Authorization': "Basic ${authString}"]))
+					jsonResult.items.find{
+						if(it.downloadUrl.contains(packageVersion) && !it.downloadUrl.contains("md5") && !it.downloadUrl.contains("sha1")){
+							packageDownlodUrl = it.downloadUrl
+							return true
+						}
+					}
+					env.packageDownlodUrl = "$packageDownlodUrl"
+					//download(packageDownlodUrl)
+				/*
+				}
+				*/
+		   }
+
+			stage('Downloading from Nexus'){
+				sh '''
+					ls -talrh $( echo -e $( ls -talrh $packageDownlodUrl | awk -F "/" '{print $NF}' ) )
+					wget --header='Authorization: Basic amVua2luczpOd0FOOVVlano3a3dlMQ==' $packageDownlodUrl
+					mkdir dist
+					unzip *.zip
+					mv ${packageVersion}/* dist/
+					rm -rf $packageVersion
+				'''
+			}
+
+		}
+	   
+	   if( !buildmethod.equals("Build Only") ){
+		   
+	   		stage('Publishing to Bucket'){
+				uploadToBucket("components")
+				uploadToBucket("vendor")
+				uploadToBucket("assets")
+				uploadToBucket("env")
+	   		}
+			
+			//Commenting out this section as it is not working. We need to fix it.
+			if( currentBuild.result == "SUCCESS" ){
+				stage('Redeploying Node'){
+					//String jenkinsJobName = (namespace + "_node");
+					String jenkinsJobName = (env.envName + "_node");
+					def depName = "node-publish"
+					env.depName = "$depName"
+					def nodeTagName =sh(returnStdout: true, script:"kubectl describe deployments -n ${namespace} ${depName} | grep -B 1 \'Image:\' | tr -d \' \' | tr -d \"\\n\" | awk -F \":\" \'{print \$4 }\'").trim()
+					println "${nodeTagName}"
+					println "starting build node"
+					build job: "$jenkinsJobName", parameters: [string(name: 'BuildType', value: 'Deploy Only'), string(name: 'FromEnv', value: "$envName"), string(name: 'imageTagName', value: "${nodeTagName}")], wait: false
+				}
+			}
+	  	}
+	}
+	catch (err) {
+		currentBuild.result = "FAILURE"
+		//step([$class: 'Mailer', notifyEveryUnstableBuild: true, recipients: 'hkhan2@sapient.com mramanathan@sapient.com', sendToIndividuals: false])
+		throw err
+	}
+}
+
+//Function to extract branch name from tag string
+def ExtractBranchName(sourceString) {
+    def extractedBranchName = ''
+    def n = 3
+    def pos = sourceString.indexOf("-")
+                
+    //This is to take out the branch name from existing tag
+    while (--n > 0 && pos != -1){
+        pos = sourceString.indexOf("-", pos + 1)
+    }
+    extractedBranchName = sourceString.substring(pos + 1)
+    return extractedBranchName
+}
+
+def uploadToBucket(folderName){
+	env.folderName="$folderName"
+	sh '''
+		cd dist
+		if [ -d $folderName ];
+		then
+			echo "Uploading $folderName to bucket"
+			#Uncommenting out for actual run
+			gsutil -m cp -RZ ${folderName}/  gs://${envName}_component_registry_vol/
+			gsutil -m setmeta -rh "Cache-Control: max-age=3600" gs://${envName}_component_registry_vol/${folderName}/*
+		else
+			echo -e " $folderName dir not exists "
+		fi
+	'''
+}
+
+public void download(def address) {
+  def stagingDir = env.WORKSPACE
+  URL url = new URL(address);
+  URLConnection urlConnection = url.openConnection();
+  urlConnection.setRequestProperty("Authorization", "Basic amVua2luczpOd0FOOVVlano3a3dlMQ==");
+  def filename = address.tokenize('/')[-1]
+//  def filename = "README.md"
+  def filelocation = stagingDir + '/' + filename
+  File newfile = new File(filename)
+/*  boolean fileCreated = false;
+  try {
+     fileCreated = newfile.createNewFile();
+  }
+  catch (IOException ioe) {
+	 System.out.println("Error while creating empty file: " + ioe);
+  }
+  if (fileCreated) {
+     System.out.println("Created empty file: " + newfile.getPath());
+  }
+  else {
+     System.out.println("Failed to create empty file: " + newfile.getPath());
+  }
+*/
+  FileOutputStream file = new FileOutputStream(newfile)
+  BufferedOutputStream out = new BufferedOutputStream(file)
+  out << urlConnection.openStream()
+  out.close()
+/*
+  new File("${address.tokenize('/')[-1]}").withOutputStream { out ->
+    out << urlConnection.openStream()
+  }
+  newfile.withOutputStream { out ->
+      urlConnection.withInputStream { from ->  out << from; }
+  }
+  */
+}

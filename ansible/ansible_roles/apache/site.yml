@@ -1,0 +1,5 @@
+---
+- hosts: host01
+  roles:
+    - apache
+  

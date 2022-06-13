@@ -1,0 +1,52 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: influxdb
+  name: influxdb
+  namespace: NAMESPACE
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: influxdb
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: influxdb
+      name: influxdb
+    spec:
+      containers:
+      - env:
+        - name: INFLUXDB_DB
+          value: academycommerce
+        image: us.gcr.io/just-slate-88918/influxdb:1.5.4
+        imagePullPolicy: Always
+        name: influxdb
+        readinessProbe:
+          failureThreshold: 5
+          initialDelaySeconds: 60
+          periodSeconds: 5
+          successThreshold: 1
+          tcpSocket:
+            port: 8086
+          timeoutSeconds: 1
+        resources: {}
+        securityContext:
+          privileged: false
+        volumeMounts:
+        - mountPath: /var/lib/influxdb
+          name: influxdb-pv-storage-NAMESPACE
+      dnsPolicy: ClusterFirst
+      imagePullSecrets:
+      - name: aso-gcr-secret
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: influxdb-pv-storage-NAMESPACE
+        persistentVolumeClaim:
+          claimName: influxdb-pvc-NAMESPACE

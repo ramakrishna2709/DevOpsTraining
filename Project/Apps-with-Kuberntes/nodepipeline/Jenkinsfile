@@ -1,0 +1,569 @@
+node(env.JenkinsSlaveNode) {
+	//enableScope = "ssr"
+	def instanceType=env.buildType
+	def checkoutBranch = env.GIT_BRANCH
+	def gimageName = env.JOB_NAME.tokenize( '_' )[1]		//Uncommednted for actual testing
+	def envName = env.JOB_NAME.tokenize( '_' )[0]		//unommented for actual testing
+	String namespace = envName
+	String repoName = ("https://bitbucket.org/academysports/" + env.repositoryName + ".git");		//Uncommented for actual testing
+	//String repoName = ("https://bitbucket.org/academysports/" + gimageName + ".git");
+	def d = new Date(currentBuild.startTimeInMillis) 
+    def tz = TimeZone.getTimeZone('CST') 
+	def revID = d.format("yyyyMMMdd'T'HHmmz", tz)
+	def pipelineRepo = 'https://bitbucket.org/academysports/devops-cd-pipeline.git'
+	def pipelineBranch = env.pipelinebname
+	def imageTagNameAuthor = env.imageTagName
+	def imageTagNamePublish = env.imageTagName
+	def buildmethod = env.BuildType
+	def regexPattern = ~/(?i)([a-z0-9]+-(\d)+-[a-z0-9]+-[a-z0-9-\.]+)/
+	env.buildmethod = "$buildmethod"
+	env.gimageName = "$gimageName"
+	env.envName = "$envName"
+	env.revID = "$revID"
+	env.checkoutBranch = "$checkoutBranch"
+	env.imageTagNameAuthor = "$imageTagNameAuthor"
+	env.imageTagNamePublish = "$imageTagNamePublish"
+	env.regexPattern = "$regexPattern"
+	def branchName = env.checkoutBranch.tokenize( '/' ).join('_')
+	env.branchName = "$branchName"
+	currentBuild.result = "SUCCESS"
+
+	//Setting up namespace variable
+    if (env.envName.equals("uat") || env.envName.equals("prod")){
+        namespace = "default"
+    }
+	
+    env.namespace = "$namespace"
+    println namespace
+	
+	try {
+
+		stage('Create separate workspace for Node and Pipeline'){
+			sh '''
+				if [ ! -d pipeline ]
+				then
+					mkdir pipeline
+				fi
+
+				if [ ! -d node ]
+				then
+					mkdir node
+				fi
+			'''
+			env.pipelineWorkspace = "${WORKSPACE}/pipeline"
+			env.nodeWorkspace = "${WORKSPACE}/node"
+		}
+
+		stage('Reading Properties'){
+			dir(pipelineWorkspace){
+				checkout([$class: 'GitSCM', branches: [[name: "${pipelineBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: "${pipelineRepo}"]]])
+				//Reading properties
+				def content = readFile "properties/${envName}.properties"
+
+				Properties properties = new Properties()
+				InputStream is = new ByteArrayInputStream(content.getBytes());
+				properties.load(is)
+				//Setting up env variables
+				env.kubeHome = properties."${envName}.nodeKubeHome"
+				env.dockerHome = properties."${envName}.nodeDockerHome"
+				env.sonarUrl = properties."${envName}.sonarUrl"
+				env.sonarExclusions = properties."${envName}.nodeSonarExclusions"
+				env.sonarJSExclusions = properties."${envName}.nodeSonarJSExclusions"
+
+				//Reading properties for node author
+				env.authorVCPUMax = properties."${envName}.${gimageName}-author.vCPUMax"
+				env.authorVMemoryMax = properties."${envName}.${gimageName}-author.vMemoryMax"
+				env.authorVCPUMin = properties."${envName}.${gimageName}-author.vCPUMin"
+				env.authorVMemoryMin = properties."${envName}.${gimageName}-author.vMemoryMin"
+				env.authorVCPUPercent = properties."${envName}.${gimageName}-author.vCPUPercent"
+				env.authorMinReplicas = properties."${envName}.${gimageName}-author.minReplicas"
+				env.authorMaxReplicas = properties."${envName}.${gimageName}-author.maxReplicas"
+				env.authorPort = properties."${envName}.${gimageName}-author.port"
+				env.authorAppPNumber = properties."${envName}.${gimageName}-author.appPNumber"
+				env.authorInternalLBIP = properties."${envName}.${gimageName}-author.internalLBIP"
+				env.authorAuthorHostName = properties."${envName}.${gimageName}-author.authorHostName"
+				env.authorPublisherHostName = properties."${envName}.${gimageName}-author.publisherHostName"
+				env.authorNodeEnvName = properties."${envName}.${gimageName}-author.nodeEnvName"
+				env.authorAppName = properties."${envName}.${gimageName}-author.appName"
+				env.authorInternalLB = properties."${envName}.${gimageName}-author.internalLB"
+
+				//Reading internal LB IP
+                if(authorInternalLB.equals("True")){
+                    env.authorInternalLBIP = properties."${envName}.${gimageName}-author.internalLBIP"
+                }
+
+				//Reading properties for node publish
+				env.publishVCPUMax = properties."${envName}.${gimageName}-publish.vCPUMax"
+				env.publishVMemoryMax = properties."${envName}.${gimageName}-publish.vMemoryMax"
+				env.publishVCPUMin = properties."${envName}.${gimageName}-publish.vCPUMin"
+				env.publishVMemoryMin = properties."${envName}.${gimageName}-publish.vMemoryMin"
+				env.publishVCPUPercent = properties."${envName}.${gimageName}-publish.vCPUPercent"
+				env.publishMinReplicas = properties."${envName}.${gimageName}-publish.minReplicas"
+				env.publishMaxReplicas = properties."${envName}.${gimageName}-publish.maxReplicas"
+				env.publishPort = properties."${envName}.${gimageName}-publish.port"
+				env.publishAppPNumber = properties."${envName}.${gimageName}-publish.appPNumber"
+				env.publishInternalLBIP = properties."${envName}.${gimageName}-publish.internalLBIP"
+				env.publishAuthorHostName = properties."${envName}.${gimageName}-publish.authorHostName"
+				env.publishPublisherHostName = properties."${envName}.${gimageName}-publish.publisherHostName"
+				env.publishNodeEnvName = properties."${envName}.${gimageName}-publish.nodeEnvName"
+				env.publishAppName = properties."${envName}.${gimageName}-publish.appName"
+				env.publishInternalLB = properties."${envName}.${gimageName}-publish.internalLB"
+
+				//Reading internal LB IP
+                if(publishInternalLB.equals("True")){
+                    env.publishInternalLBIP = properties."${envName}.${gimageName}-publish.internalLBIP"
+                }
+
+				//Creating tag string
+				println "Creating Tag String"
+                if(buildmethod.equals("Build Only") || buildmethod.equals("Build & Deploy")){
+                    if(checkoutBranch ==~ regexPattern){
+                        def extractedBranchName = ExtractBranchName(checkoutBranch)
+                        env.tagName = "${envName}-${BUILD_NUMBER}-${revID}-${extractedBranchName}"
+                    }
+                    else{
+                        env.tagName = "${envName}-${BUILD_NUMBER}-${revID}-${branchName}"
+                    }
+                    
+                }
+                
+				//Extract branch name from tag provided
+                if(buildmethod.equals("Tag Only") || buildmethod.equals("Tag & Deploy")){
+                    def extractedBranchName = ExtractBranchName(imageTagNameAuthor)		//Tag from Author and Publish are same
+                    env.tagName = "${envName}-${BUILD_NUMBER}-${revID}-${extractedBranchName}"
+                }
+				println "${env.tagName}"
+				println "All properties read!"
+			}
+        }
+
+	    if( buildmethod =~ /^Build.*/ )
+		{
+			stage('Checkout'){
+				dir(nodeWorkspace){
+					checkout([$class: 'GitSCM', branches: [[name: "${checkoutBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: "${repoName}"]]])
+				}
+			}
+			stage('Build'){
+				dir(nodeWorkspace){
+					println "Inside Build stage"
+					sh "npm install"		//Uncommented for actual testing 
+				}
+			}
+			stage('UnitTest'){
+				dir(nodeWorkspace){
+					println "Inside UnitTest stage"
+					sh "make clean"			//Uncommented for actual testing
+					sh "make unittests"		//Commented for actual testing
+				}
+			}
+			stage('Code Coverage'){
+				dir(nodeWorkspace){
+					println "Inside Code coverage stage"
+					sh "make coverage"		//Uncommented for actual testing
+				}
+			}
+			
+			stage('Code Quality - Sonar'){
+				dir(nodeWorkspace){
+					println "Inside Code quality stage"
+					def jsonFile = readJSON file: 'package.json'
+					def versionFromJson = jsonFile.version
+					env.versionFromJson = "$versionFromJson"
+					sh "sonar-scanner -Dsonar.login=524cd2a0697cc248530153b238fb5d87f8987fd4 -Dsonar.host.url=${sonarUrl} -Dsonar.projectKey=com.academy:${gimageName}-${branchName} -Dsonar.projectName=${gimageName}-${branchName} -Dsonar.projectVersion=${versionFromJson} -Dsonar.cpd.cross_project=false -Dsonar.source=. -Dsonar.dynamicAnalysis=reuseReports -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info"
+				}
+			}
+
+			stage('Preparing for Nexus upload and Sonar Scan'){
+				dir(nodeWorkspace){
+					def nexusartifactId = sh(returnStdout: true, script: "echo ${gimageName}").trim()
+					def versionSubString = "${BUILD_NUMBER}-${branchName}"
+					def nexusRepo = ""
+					if(checkoutBranch ==~ regexPattern){
+						def extractedBranchName = ExtractBranchName(checkoutBranch)
+						versionSubString = "${BUILD_NUMBER}-${extractedBranchName}"
+					}
+
+					if(versionFromJson.contains("SNAPSHOT")){
+						nexusRepo = "maven-snapshots"
+					}
+					else{
+						nexusRepo = "maven-releases"
+					}
+					def version = "${versionSubString}-${versionFromJson}"
+					env.version = "$version"
+					env.nexusartifactId = "$nexusartifactId"
+					env.nexusRepo = "$nexusRepo"
+				}
+			}
+
+			stage('Apply Tag'){
+				dir(nodeWorkspace){
+					//withCredentials([usernamePassword(credentialsId: 'ASOGCPBitbucketCredentials', passwordVariable: 'bitbucketPass', usernameVariable: 'bitbucketUser')]) {
+					withCredentials([usernamePassword(credentialsId: 'ee9ee2a1-1610-4102-ab77-512fa52a8ed4', passwordVariable: 'bitbucketPass', usernameVariable: 'bitbucketUser')]) { 
+						println "Inside Git tag stage"
+						sh("git tag -a ${tagName} -m 'Tag for ${gimageName}'")
+                    	sh("git push https://${bitbucketUser}:${bitbucketPass}@bitbucket.org/academysports/${repositoryName}.git --tags")
+					}
+				}
+			}
+		
+			stage('Deploy to Nexus'){
+				dir(nodeWorkspace){
+					//Commented out for testing	
+					sh '''
+						#cd ${WORKSPACE}/
+						echo $pwd
+						mkdir ${version}
+						cp -r config ${version}
+						cp -r data ${version}
+						cp -r helper ${version}
+						cp -r lib ${version}
+						cp -r logger ${version}
+						cp -r logs ${version}
+						cp -r middleware ${version}
+						cp -r provision ${version}
+						cp -r test ${version}
+						cp -r utils ${version}
+						cp -r node_modules ${version}
+						zip -r  ${version}.zip ${version}	
+					''' 
+					println "${nexusartifactId}"				
+					filename = "${version}.zip"
+					println "${filename}"
+					//Commented for testing			
+					step([$class: 'NexusArtifactUploader', artifacts: [[artifactId: "${nexusartifactId}", classifier: '', file: "${filename}", type: 'zip']], credentialsId: '61abe64a-5f7a-48ba-b4c6-d1320934b315', groupId: 'com.academy', nexusUrl: '10.104.36.5', nexusVersion: 'nexus3', protocol: 'http', repository: "${nexusRepo}", version: "${version}"])
+
+					//Removing the folder created above
+					sh "rm -rf ${version}"
+				}
+			}
+			
+			stage('Prepare for Docker image build'){
+				dir(pipelineWorkspace){
+					checkout([$class: 'GitSCM', branches: [[name: "${pipelineBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: "${pipelineRepo}"]]])
+					sh '''
+						cd ${dockerHome}
+						#Create directory, copy Dockerfile and replace values for Author
+						if [ ! -d author ]
+						then
+							mkdir author
+						fi
+						cp Dockerfile author/
+						sed -i "s/APPPNUMBER/$authorAppPNumber/g" author/Dockerfile
+						sed -i "s/APPNAME/$authorAppName/g" author/Dockerfile
+
+						#Create directory, copy Dockerfile and replace values for Publish
+						if [ ! -d publish ]
+						then
+							mkdir publish
+						fi
+						cp Dockerfile publish/
+						sed -i "s/APPPNUMBER/$publishAppPNumber/g" publish/Dockerfile
+						sed -i "s/APPNAME/$publishAppName/g" publish/Dockerfile
+
+						#Copy .dockerignore file to workspace root folder
+						cp .dockerignore ${nodeWorkspace}
+					'''
+				}
+			}
+
+			stage('Build Docker Image Author'){
+				println "Inside build docker image Author"
+				sh '''
+					#Changing image name
+					rm -rf *0.0.1-*.zip
+					rm -rf *0.0.1-*
+					rm -rf coverage.lcov coverage reports Makefile sonar-project.properties README.md
+					imageName="us.gcr.io/just-slate-88918/${gimageName}-author:${tagName}"
+					sudo docker build -t ${imageName} --pull=true --file=${pipelineWorkspace}/${dockerHome}/author/Dockerfile ${nodeWorkspace}	#Uncommented for actual testing
+				'''
+			}
+			stage('Build Docker Image Publish'){
+				println "Inside build docker image Publish"
+				sh '''
+					#Changing image name
+					imageName="us.gcr.io/just-slate-88918/${gimageName}-publish:${tagName}"
+					sudo docker build -t ${imageName} --pull=true --file=${pipelineWorkspace}/${dockerHome}/publish/Dockerfile ${nodeWorkspace}		#Uncommented for actual testing
+				'''
+			}
+			parallel 'Publish Docker Image for Author':{
+				println "Inside publish docker image Author"
+				//Uncommented for actual testing
+				sh "sudo gcloud docker -- push us.gcr.io/just-slate-88918/${gimageName}-author:${tagName}"
+			}, 'Publish Docker Image for Publish':{
+				println "Inside publish docker image Publish"
+				//Uncommented for actual testing
+				sh "sudo gcloud docker -- push us.gcr.io/just-slate-88918/${gimageName}-publish:${tagName}"
+			}
+	   }
+	   if( buildmethod =~ /^Tag.*/ ){
+            stage('Retagging Author Docker Image'){
+		        sh '''
+                    imageAuthorOldName="us.gcr.io/just-slate-88918/${gimageName}-author:${imageTagName}"
+                    imageAuthorNewName="us.gcr.io/just-slate-88918/${gimageName}-author:${tagName}"
+                    sudo docker pull ${imageAuthorOldName}
+                    sudo docker tag ${imageAuthorOldName} ${imageAuthorNewName}
+                    echo $imageAuthorNewName
+			    '''
+	        }
+			stage('Retagging Publish Docker Image'){
+		        sh '''
+                    imagePublishOldName="us.gcr.io/just-slate-88918/${gimageName}-publish:${imageTagName}"
+                    imagePublishNewName="us.gcr.io/just-slate-88918/${gimageName}-publish:${tagName}"
+                    sudo docker pull ${imagePublishOldName}
+                    sudo docker tag ${imagePublishOldName} ${imagePublishNewName}
+                    echo $imagePublishNewName
+			    '''
+	        }
+			parallel 'Publish Docker Image':{
+		        sh '''
+                    sudo docker push us.gcr.io/just-slate-88918/${gimageName}-author:${tagName}
+					sudo docker push us.gcr.io/just-slate-88918/${gimageName}-publish:${tagName}
+                    echo "Image to push is - us.gcr.io/just-slate-88918/${gimageName}-author:${tagName}"
+					echo "Image to push is - us.gcr.io/just-slate-88918/${gimageName}-publish:${tagName}"
+			    '''
+	        }
+        }
+
+	   if( ( ! buildmethod.equals("Build Only") ) && ( ! buildmethod.equals("Tag Only") ) )
+	   {
+	   		if(currentBuild.result=='SUCCESS')
+			{
+				stage('Cloning to Kubernetes Repo'){
+					dir(pipelineWorkspace){
+						checkout([$class: 'GitSCM', branches: [[name: "${pipelineBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'ASOGCPBitbucketCredentials', url: "${pipelineRepo}"]]])
+					}
+				}
+				stage('Deploying Author to Kubernetes'){
+					dir(pipelineWorkspace){
+						sh '''
+							sleep 30
+							serviceName="${gimageName}-author"
+							deploymentType='deployment'
+							serviceType='service'
+
+							#Checking whether service needs internal LB
+							if [ "${authorInternalLB}" == "True" ]
+							then
+								serviceType='service-internalLB'
+							fi
+
+							##If the method is "Deploy Only", use the image tag from dropdown
+							if [ "${buildmethod}" == "Deploy Only" ];
+							then
+								tagName="${imageTagNameAuthor}"
+							fi
+
+							kubernetesFileLocation=${kubeHome}
+							
+							export PATH=$HOME/google-cloud-sdk/bin:$PATH
+							
+							if [ ! -z ${serviceName} ] && [ ! -z ${serviceType} ]
+							then
+								#cd ${kubernetesFileLocation}/author
+								cd ${kubernetesFileLocation}
+
+								#Creating files from templates for Author
+								cp ${deploymentType}.yml ${deploymentType}-author.yml
+								cp ${serviceType}.yml ${serviceType}-author.yml
+								cp hpa.yml hpa-author.yml
+
+								#Putting values in placeholders in deployment-author.yml
+								sed -i "s/BUILDVERSION/$tagName/g" ${deploymentType}"-author.yml"
+								sed -i "s/BUILD_NUMBER/$BUILD_NUMBER/g" ${deploymentType}"-author.yml"
+								sed -i "s/APPLICATIONNAME/$serviceName/g" ${deploymentType}"-author.yml"
+								sed -i "s/ENVIRONMENTNAMEUPPER/$upperEnvName/g" ${deploymentType}"-author.yml"
+								sed -i "s/ENVIRONMENTNAME/$envName/g" ${deploymentType}"-author.yml"
+								sed -i "s/NODEENVNAME/$authorNodeEnvName/g" ${deploymentType}"-author.yml"
+								sed -i "s/VCPUMAX/$authorVCPUMax/g" ${deploymentType}"-author.yml"
+								sed -i "s/VMEMORYMAX/$authorVMemoryMax/g" ${deploymentType}"-author.yml"
+								sed -i "s/VCPUMIN/$authorVCPUMin/g" ${deploymentType}"-author.yml"
+								sed -i "s/VMEMORYMIN/$authorVMemoryMin/g" ${deploymentType}"-author.yml"
+								sed -i "s/APPPNUMBER/$authorAppPNumber/g" ${deploymentType}"-author.yml"
+								sed -i "s/NAMESPACE/$namespace/g" ${deploymentType}"-author.yml"
+								sed -i "s/AUTHORHOSTNAME/$authorAuthorHostName/g" ${deploymentType}"-author.yml"
+								sed -i "s/PUBLISHERHOSTNAME/$authorPublisherHostName/g" ${deploymentType}"-author.yml"
+
+
+								#Check deployment already exists or not
+								if [ $( kubectl get ${deploymentType} -n $namespace | grep -c ${serviceName} ) -ge 1 ]
+								then
+									kubectl apply -f $( echo -e ${deploymentType}"-author.yml" )   ##Uncommented for actual testing
+									echo "Update deployment"
+								else
+									kubectl create --save-config -f $( echo -e ${deploymentType}"-author.yml" )   ##Uncommented for actual testing
+									echo "Create deployment"
+								fi
+
+								#Putting values in placeholders in hpa-author.yml
+								sed -i "s/minHPA/$authorMinReplicas/g" "hpa-author.yml"
+								sed -i "s/maxHPA/$authorMaxReplicas/g" "hpa-author.yml"
+								sed -i "s/VCPUPERCENT/$authorVCPUPercent/g" "hpa-author.yml"																
+								sed -i "s/APPLICATIONNAME/$serviceName/g" "hpa-author.yml"
+								sed -i "s/NAMESPACE/$namespace/g" "hpa-author.yml"
+
+								#Check HPA already exists or not
+								if [ $( kubectl get hpa -n $namespace | grep -c ${serviceName} ) -ge 1 ]
+								then
+									kubectl apply -f hpa-author.yml   ##Uncommented for actual testing
+									echo "Update HPA"
+								else
+									kubectl create -f hpa-author.yml --save-config   ##uncommented for actual testing
+									echo "Create HPA"
+								fi
+
+								#Putting values in placeholders in service-internalLB-author.yml or service-author.yml
+								sed -i "s/APPLICATIONNAME/$serviceName/g" ${serviceType}"-author.yml"
+								sed -i "s/ENVIRONMENTNAMEUPPER/$upperEnvName/g" ${serviceType}"-author.yml"
+								sed -i "s/ENVIRONMENTNAME/$envName/g" ${serviceType}"-author.yml"
+								sed -i "s/PORT/$authorPort/g" ${serviceType}"-author.yml"
+								sed -i "s/APPPNUMBER/$authorAppPNumber/g" ${serviceType}"-author.yml"
+								sed -i "s/NAMESPACE/$namespace/g" ${serviceType}"-author.yml"
+								sed -i "s/INTERNALLBIP/$authorInternalLBIP/g" ${serviceType}"-author.yml"
+
+								#Check service already exists or not
+								if [ $( kubectl get service -n $namespace | grep -c ${serviceName} ) -ge 1 ]
+								then
+									kubectl apply -f $( echo -e ${serviceType}"-author.yml" )   ##Uncommented for actual testing
+									echo "Update service"
+								else
+									kubectl create --save-config -f $( echo -e ${serviceType}"-author.yml" )	##Uncommented for actual testing
+									echo "Create service"
+								fi
+							fi
+
+							#Printing just for testing purpose
+							cat deployment-author.yml
+							cat hpa-author.yml
+							cat ${serviceType}"-author.yml"
+						'''
+					}
+				}
+				stage('Deploying Publish to Kubernetes'){
+					dir(pipelineWorkspace){
+						sh '''
+							sleep 30
+							serviceName="${gimageName}-publish"
+							deploymentType='deployment'
+							serviceType='service'
+
+							#Checking whether service needs internal LB
+							if [ "${publishInternalLB}" == "True" ]
+							then
+								serviceType='service-internalLB'
+							fi
+
+							##If the method is "Deploy Only", use the image tag from dropdown
+							if [ "${buildmethod}" == "Deploy Only" ];
+							then
+								tagName="${imageTagNamePublish}"
+							fi
+
+							kubernetesFileLocation=${kubeHome}
+							
+							export PATH=$HOME/google-cloud-sdk/bin:$PATH
+							
+							if [ ! -z ${serviceName} ] && [ ! -z ${serviceType} ]
+							then
+								cd ${kubernetesFileLocation}
+
+								#Creating files from templates for Publish
+								cp ${deploymentType}.yml ${deploymentType}-publish.yml
+								cp ${serviceType}.yml ${serviceType}-publish.yml
+								cp hpa.yml hpa-publish.yml
+
+								#Putting values in placeholders in deployment-publish.yml
+								sed -i "s/BUILDVERSION/$tagName/g" ${deploymentType}"-publish.yml"
+								sed -i "s/BUILD_NUMBER/$BUILD_NUMBER/g" ${deploymentType}"-publish.yml"
+								sed -i "s/APPLICATIONNAME/$serviceName/g" ${deploymentType}"-publish.yml"
+								sed -i "s/ENVIRONMENTNAMEUPPER/$upperEnvName/g" ${deploymentType}"-publish.yml"
+								sed -i "s/ENVIRONMENTNAME/$envName/g" ${deploymentType}"-publish.yml"
+								sed -i "s/NODEENVNAME/$publishNodeEnvName/g" ${deploymentType}"-publish.yml"
+								sed -i "s/VCPUMAX/$publishVCPUMax/g" ${deploymentType}"-publish.yml"
+								sed -i "s/VMEMORYMAX/$publishVMemoryMax/g" ${deploymentType}"-publish.yml"
+								sed -i "s/VCPUMIN/$publishVCPUMin/g" ${deploymentType}"-publish.yml"
+								sed -i "s/VMEMORYMIN/$publishVMemoryMin/g" ${deploymentType}"-publish.yml"
+								sed -i "s/APPPNUMBER/$publishAppPNumber/g" ${deploymentType}"-publish.yml"
+								sed -i "s/NAMESPACE/$namespace/g" ${deploymentType}"-publish.yml"
+								sed -i "s/AUTHORHOSTNAME/$publishAuthorHostName/g" ${deploymentType}"-publish.yml"
+								sed -i "s/PUBLISHERHOSTNAME/$publishPublisherHostName/g" ${deploymentType}"-publish.yml"
+
+								#Check deployment already exists or not
+								if [ $( kubectl get ${deploymentType} -n $namespace | grep -c ${serviceName} ) -ge 1 ]
+								then
+									kubectl apply -f $( echo -e ${deploymentType}"-publish.yml" )   ##Uncommented for actual testing
+									echo "Update deployment"
+								else
+									kubectl create --save-config -f $( echo -e ${deploymentType}"-publish.yml" )   ##Uncommented for actual testing
+									echo "Create deployment"
+								fi
+
+								#Putting values in placeholders in hpa-publish.yml
+								sed -i "s/minHPA/$publishMinReplicas/g" "hpa-publish.yml"
+								sed -i "s/maxHPA/$publishMaxReplicas/g" "hpa-publish.yml"
+								sed -i "s/VCPUPERCENT/$publishVCPUPercent/g" "hpa-publish.yml"																
+								sed -i "s/APPLICATIONNAME/$serviceName/g" "hpa-publish.yml"
+								sed -i "s/NAMESPACE/$namespace/g" "hpa-publish.yml"
+
+								#Check HPA already exists or not
+								if [ $( kubectl get hpa -n $namespace | grep -c ${serviceName} ) -ge 1 ]
+								then
+									kubectl apply -f hpa-publish.yml   ##Uncommented for actual testing
+									echo "Update HPA"
+								else
+									kubectl create -f hpa-publish.yml --save-config   ##Uncommented for actual testing
+									echo "Create HPA"
+								fi
+
+								#Putting values in placeholders in service-internalLB-publish.yml or service-publish.yml
+								sed -i "s/APPLICATIONNAME/$serviceName/g" ${serviceType}"-publish.yml"
+								sed -i "s/ENVIRONMENTNAMEUPPER/$upperEnvName/g" ${serviceType}"-publish.yml"
+								sed -i "s/ENVIRONMENTNAME/$envName/g" ${serviceType}"-publish.yml"
+								sed -i "s/PORT/$publishPort/g" ${serviceType}"-publish.yml"
+								sed -i "s/APPPNUMBER/$publishAppPNumber/g" ${serviceType}"-publish.yml"
+								sed -i "s/NAMESPACE/$namespace/g" ${serviceType}"-publish.yml"
+								sed -i "s/INTERNALLBIP/$publishInternalLBIP/g" ${serviceType}"-publish.yml"
+
+								#Check service already exists or not
+								if [ $( kubectl get service -n $namespace | grep -c ${serviceName} ) -ge 1 ]
+								then
+									kubectl apply -f $( echo -e ${serviceType}"-publish.yml" )   ##Uncommented for actual testing
+									echo "Update service"
+								else
+									kubectl create --save-config -f $( echo -e ${serviceType}"-publish.yml" )	##Uncommented for actual testing
+									echo "Create service"
+								fi
+							fi
+
+							#Printing just for testing purpose
+							cat deployment-publish.yml
+							cat hpa-publish.yml
+							cat ${serviceType}"-publish.yml"
+						'''
+					}
+				}
+			}
+	    }
+	}
+	catch (err) {
+		currentBuild.result = "FAILURE"
+			//step([$class: 'Mailer', notifyEveryUnstableBuild: true, recipients: 'hkhan2@sapient.com,mramanathan@sapient.com,sandeep.bysani@sapient.com', sendToIndividuals: false])
+		throw err
+	}
+}
+
+
+//Function to extract branch name from tag string
+def ExtractBranchName(sourceString) {
+    def extractedBranchName = ''
+    def n = 3
+    def pos = sourceString.indexOf("-")
+                
+    //This is to take out the branch name from existing tag
+    while (--n > 0 && pos != -1){
+        pos = sourceString.indexOf("-", pos + 1)
+    }
+    extractedBranchName = sourceString.substring(pos + 1)
+    return extractedBranchName
+}

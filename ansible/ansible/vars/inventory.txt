@@ -1,0 +1,477 @@
+
+#############Method1- Declare variables in inventory ##################
+[servers]
+server1.lab.com
+server2.lab.com
+server3.lab.com
+server4.lab.com
+
+[servers:vars]
+username=ansible
+
+
+#########Update playbook to use variables.
+
+$ vi add_user.yml
+---
+- name: Add a privileged user for Ansible
+  hosts: servers
+
+  tasks:
+    - name: Add a user
+      user:
+        name: "{{ username }}"
+        shell: /bin/bash
+        generate_ssh_keys: yes
+        state: present
+    - name: Configure sudo permission
+      lineinfile:
+        dest: /etc/sudoers.d/{{ username }}
+        line: 'ansible ALL=(ALL) NOPASSWD: ALL'
+        create: yes
+        state: present
+		
+		
+#############Run playbook.
+
+$ ansible-playbook add_user.yml -u ansible -b -i inventory		
+		
+#############Method2================Variables in playbook################
+
+####################Variables can be defined directly in the playbook.
+
+$ vi add_user.yml
+---
+- name: Add a privileged user for Ansible
+  hosts: servers
+  vars:
+    username: ansible
+
+  tasks:
+    - name: Add a user
+      user:
+        name: "{{ username }}"
+        shell: /bin/bash
+        generate_ssh_keys: yes
+        state: present
+    - name: Configure sudo permission
+      lineinfile:
+        dest: /etc/sudoers.d/{{ username }}
+        line: 'ansible ALL=(ALL) NOPASSWD: ALL'
+        create: yes
+        state: present
+
+$ ansible-playbook add_user.yml -u ansible -b -i ./inventory
+
+################Method 3====================Variables imported from vars file.#####################
+
+Similar to above example, variables can be defined in a separate file and then imported into playbook.
+
+Create vars file.
+
+$ vi my_vars.yml
+---
+username: ansible
+
+#############Update playbook.
+
+$ vi add_user.yml
+---
+- name: Add a privileged user for Ansible
+  hosts: servers
+  vars_files:
+    - ./my_vars.yml
+
+  tasks:
+    - name: Add a user
+      user:
+        name: "{{ username }}"
+        shell: /bin/bash
+        generate_ssh_keys: yes
+        state: present
+    - name: Configure sudo permission
+      lineinfile:
+        dest: /etc/sudoers.d/{{ username }}
+        line: 'ansible ALL=(ALL) NOPASSWD: ALL'
+        create: yes
+        state: present
+		
+##########################3Ansible Facts################
+Each time Ansible is run unless disabled the setup module is also run. The setup module gathers Ansible facts. These are variables that give us valuable information about the managed host and they can be acted upon within playbooks.  Anything from a hosts network, hardware and OS information are gathered. It is also possible to define custom facts that would be gathered.
+
+#################View ansible facts for a host.
+
+$ ansible -m setup -u ansible -b -i ./inventory servera.lab.com
+Use ansible facts in playbook.
+
+Here we will print the memory and number of cpu cores in our playbook by adding a new task.
+
+$ vi add_user.yml
+---
+    - name: Print Memory and CPU Cores
+      debug:
+        msg: "Host {{ ansible_hostname }} has {{ ansible_memtotal_mb }} MB Memory and {{ ansible_processor_cores }} CPU Cores."
+---
+
+Run playbook.
+
+$ ansible-playbook add_user.yml -u ansible -b -i ./inventory
+
+######################################Controlling Playbooks#################
+We have seen how to use modules to drive tasks and even parameterize them with variables. Next we will understand how to better control tasks within those playbooks.
+
+#################When Conditional
+
+This acts as an if statement in common programming languages. In Ansible we use when statement to run a task based on a condition being met.
+
+Execute add user only when username is defined.
+
+$ vi add_user.yaml
+---
+    - name: Add a user
+      user:
+        name: "{{ username }}"
+        shell: /bin/bash
+        generate_ssh_keys: yes
+        state: present
+      when: username is defined
+---
+Run playbook.
+
+$ ansible-playbook add_user.yml -u ansible -b -i ./inventory
+
+##################Loops
+
+In Ansible loops are very useful when the same task or module need to execute against a list. In our playbook let’s update it to take action on many users and thus show how to use a loop.
+
+Update vars file.
+
+$ vi my_vars.yml
+---
+users:
+  - ansible
+  - bob
+  - joe
+  - keith
+Update playbook.
+
+$ vi add_user.yml
+---
+- name: Add a privileged user for Ansible
+  hosts: servers
+  vars_files:
+    - ./my_vars.yml
+
+  tasks:
+    - name: Print Memory and CPU Cores 
+      debug: 
+        msg: "Host {{ ansible_hostname }} has {{ ansible_memtotal_mb }} MB Memory and {{ ansible_processor_cores }} CPU Cores."
+    - name: Add a user
+      user:
+        name: "{{ item }}"
+        shell: /bin/bash
+        generate_ssh_keys: yes
+        state: present
+      with_items: "{{ users }}"
+      when: item is defined
+    - name: Configure sudo permission
+      lineinfile:
+        dest: /etc/sudoers.d/{{ item }}
+        line: 'ansible ALL=(ALL) NOPASSWD: ALL'
+        create: yes
+        state: present
+      with_items: "{{ users }}"
+      when: item is defined
+Run playbook.
+
+$ ansible-playbook add_user.yml -u ansible -b -i ./inventory
+
+######################Handlers
+
+In order to couple tasks or have a task executed from another task, a handler is required. Here we will look at converting the “configure sudo permission” task into a handler that can be triggered by the “add a user” task.
+
+Update playbook.
+
+$ vi add_user.yml
+---
+- name: Add a privileged user for Ansible
+  hosts: servers
+  vars_files:
+    - ./my_vars.yml
+
+  tasks:
+    - name: Print Memory and CPU Cores 
+      debug: 
+        msg: "Host {{ ansible_hostname }} has {{ ansible_memtotal_mb }} MB Memory and {{ ansible_processor_cores }} CPU Cores."
+    - name: Add a user
+      user:
+        name: "{{ item }}"
+        shell: /bin/bash
+        generate_ssh_keys: yes
+        state: present
+      with_items: "{{ users }}"
+      when: item is defined
+      notify:
+        - 'Configure sudo permission'
+
+  handlers:
+    - name: Configure sudo permission
+      lineinfile:
+        dest: /etc/sudoers.d/{{ item }}
+        line: 'ansible ALL=(ALL) NOPASSWD: ALL'
+        create: yes
+        state: present
+      with_items: "{{ users }}"
+      when: item is defined
+Now sudo permissions will only be set when a new user is actually added. It is very important to understand behavior with handlers, a notifer will only run when the task made a change.
+
+Run playbook.
+
+$ ansible-playbook add_user.yml -u ansible -b -i ./inventory
+#########################################Tags
+
+It may be desired to only run certain tasks and to control which tasks get run from cli. This is done in Ansible via tags. Lets set a tag which will only run the task that prints memory and cpu info.
+
+Update playbook.
+
+$ vi add_user.yml
+---
+- name: Add a privileged user for Ansible
+  hosts: servers
+  vars_files:
+    - ./my_vars.yml
+
+  tasks:
+    - name: Print Memory and CPU Cores 
+      debug: 
+        msg: "Host {{ ansible_hostname }} has {{ ansible_memtotal_mb }} MB Memory and {{ ansible_processor_cores }} CPU Cores."
+      tags:
+        - info
+    - name: Add a user
+      user:
+        name: "{{ item }}"
+        shell: /bin/bash
+        generate_ssh_keys: yes
+        state: present
+      with_items: "{{ users }}"
+      when: item is defined
+      notify:
+        - 'Configure sudo permission'
+
+  handlers:
+    - name: Configure sudo permission
+      lineinfile:
+        dest: /etc/sudoers.d/{{ item }}
+        line: 'ansible ALL=(ALL) NOPASSWD: ALL'
+        create: yes
+        state: present
+      with_items: "{{ users }}"
+      when: item is defined
+Run playbook using tag ‘info’.
+
+$ ansible-playbook add_user.yml -u ansible -b -i ./inventory --tags 'info'
+#################################Blocks
+
+In order to handle errors in Ansible blocks are often used. The block statement defines the main task to run. The rescue statement defines a task that should run if an error is encountered inside the block. Here we will setup error handling for our add user task.
+
+Update playbook.
+
+$ vi add_user.yml
+---
+- name: Add a privileged user for Ansible
+  hosts: servers
+  vars_files:
+    - ./my_vars.yml
+
+  tasks:
+    - name: Print Memory and CPU Cores 
+      debug: 
+        msg: "Host {{ ansible_hostname }} has {{ ansible_memtotal_mb }} MB Memory and {{ ansible_processor_cores }} CPU Cores."
+      tags:
+        - info
+    - block:
+        - name: Add a user
+          user:
+            name: "{{ item }}"
+            shell: /bin/bash
+            generate_ssh_keys: yes
+            state: present
+          with_items: "{{ users }}"
+          when: item is defined
+          notify:
+            - 'Configure sudo permission'
+      rescue:
+        - name: revert user add
+          user: 
+            name: "{{ item }}" 
+            state: absent 
+          with_items: "{{ users }}" 
+          when: item is defined         
+  handlers:
+    - name: Configure sudo permission
+      lineinfile:
+        dest: /etc/sudoers.d/{{ item }}
+        line: 'ansible ALL=(ALL) NOPASSWD: ALL'
+        create: yes
+        state: present
+      with_items: "{{ users }}"
+      when: item is defined
+The playbook will now attempt to remove users if an error occurs with the add user task. You can simulate this by adding a new user to my_vars.yml file and running without the -b (become root) option.
+
+Run playbook.
+
+$ ansible-playbook add_user.yml -u ansible -i ./inventory
+
+####################################Templates
+In Ansible templates are used mostly to parameterize configuration files. Ansible uses the jinja2 templating system. A template module is provided that defines the template and where it should be placed. Variables are automatically substituted for their values when the template is copied to its destination. We will add a new task to the playbook which sets the motd using hostname as a dynamic variable from a motd jinja2 template.
+
+Create a jinja2 template for motd.
+
+$ vi motd.j2
+Ansible Rocks!!! This is host {{ ansible_hostname }}.
+Update playbook.
+
+$ vi add_user.yml
+---
+- name: Add a privileged user for Ansible
+  hosts: servers
+  vars_files:
+    - ./my_vars.yml
+
+  tasks:
+    - name: Configure MOTD using template
+      template:
+        src: ./motd.j2
+        dest: /etc/motd
+        owner: root
+        group: root
+        mode: 0644
+    - name: Print Memory and CPU Cores 
+      debug: 
+        msg: "Host {{ ansible_hostname }} has {{ ansible_memtotal_mb }} MB Memory and {{ ansible_processor_cores }} CPU Cores."
+      tags:
+        - info
+    - block:
+        - name: Add a user
+          user:
+            name: "{{ item }}"
+            shell: /bin/bash
+            generate_ssh_keys: yes
+            state: present
+          with_items: "{{ users }}"
+          when: item is defined
+          notify:
+            - 'Configure sudo permission'
+      rescue:
+        - name: revert user add
+          user: 
+            name: "{{ item }}" 
+            state: absent 
+          with_items: "{{ users }}" 
+          when: item is defined         
+  handlers:
+    - name: Configure sudo permission
+      lineinfile:
+        dest: /etc/sudoers.d/{{ item }}
+        line: 'ansible ALL=(ALL) NOPASSWD: ALL'
+        create: yes
+        state: present
+      with_items: "{{ users }}"
+      when: item is defined
+Run playbook.
+
+$ ansible-playbook add_user.yml -u ansible -b -i ./inventory
+The playbook will now update motd based on our jinja2 template. The hostname will be dynamically applied based on the variable.
+
+Check MOTD.
+
+$ ssh -l ansible server1
+Ansible Rocks!!! This is host server1.
+
+################################Roles#################################3
+
+
+###########Create role structure.
+
+The ansible-galaxy command allows lists, installs and removes roles from galaxy. It also generates the empty structure of a role, useful for creating your own roles. Here we will create the empty structure for our new add_user role.
+
+$ ansible-galaxy init --offline -p roles add_user
+ 
+##########Create role tasks.
+
+Now we will move the tasks from our playbook into the role. A simply copy/paste and delete of the first four empty spaces of each line will suffice.
+
+$ vi roles/add_user/tasks/main.yml
+---
+- name: Configure MOTD using template
+  template:
+    src: ./motd.j2
+    dest: /etc/motd
+    owner: root
+    group: root
+    mode: 0644
+- name: Print Memory and CPU Cores 
+  debug: 
+    msg: "Host {{ ansible_hostname }} has {{ ansible_memtotal_mb }} MB Memory and {{ ansible_processor_cores }} CPU Cores."
+  tags:
+    - info
+- block:
+    - name: Add a user
+      user:
+        name: "{{ item }}"
+        shell: /bin/bash
+        generate_ssh_keys: yes
+        state: present
+      with_items: "{{ users }}"
+      when: item is defined
+      notify:
+        - 'Configure sudo permission'
+  rescue:
+    - name: revert user add
+      user: 
+        name: "{{ item }}" 
+        state: absent 
+      with_items: "{{ users }}" 
+      when: item is defined
+######################3Create role handlers.
+
+Similar to tasks handlers also have a specific location within a role. Again copy/paste and delete of the first four spaces of each line.
+
+$ vi roles/add_user/handlers/main.yml
+---
+- name: Configure sudo permission
+  lineinfile:
+    dest: /etc/sudoers.d/{{ item }}
+    line: 'ansible ALL=(ALL) NOPASSWD: ALL'
+    create: yes
+    state: present
+  with_items: "{{ users }}"
+  when: item is defined
+###################Create role vars.
+
+Variables for a role can be stored under vars or default. In this case we will put them under vars.
+
+$ vi roles/add_users/vars/main.yml
+--- 
+users: 
+  - ansible 
+  - bob 
+  - joe 
+  - keith
+######################Create role templates.
+
+Templates simply need to be copied to the correct location.
+
+$ cp motd.j2 roles/add_user/templates
+Create playbook that uses role.
+
+$ vi add_user_using_role.yml
+---
+- name: Add user using role
+  hosts: servers
+  roles:
+    - add_user
+Run playbook.
+
+$ ansible-playbook add_user_using_role.yml -u ansible -b -i ./inventory
+The playbook will now execute our role. As you have seen roles provide a pre-defined structuring and packaging of playbook tasks that greatly enhances re-usability.

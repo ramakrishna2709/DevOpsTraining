@@ -1,0 +1,23 @@
+---
+- hosts: host01
+  become: true
+  
+  tasks:
+    - name: Play with tags
+      #gather_facts: true
+      debug: 
+        msg: "In the success life"
+      tags:
+          - success
+
+    - name: Going to play
+      debug: 
+        msg: "In the sandbox"
+
+    - name: Play without tags
+      debug: 
+        msg: "In the failure life"
+      #gather_facts: true
+      tags:
+          - failure
+     

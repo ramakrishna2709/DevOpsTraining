@@ -1,0 +1,12 @@
+---
+- hosts: all
+  #remote_user: root
+  become: yes
+  
+  vars:
+    http_port: 80
+    domain: example.com
+
+  tasks:
+    - name: copy file
+      copy: src=../target/vprofile-v1.war dest=/home/ravishankar5358/ansible mode=0777   
